@@ -24,6 +24,7 @@
 ## 行为约定
 
 - **binary 不存在时报告未安装，不启动空终端。** 只解析官方 CLI 名称及其常见包管理器路径，不猜测 WorkBuddy 私有安装路径。
+- **Windows npm 安装直接启动 Node 与官方入口。** Go 不能直接执行 `.cmd`，转经 `cmd.exe` 又会给 settings JSON 引入 shell 引号问题；adapter 只解开指向官方包入口的 npm shim，保留原始 argv。未识别的自定义 shim 或缺失入口必须明确报错，不能静默绕过用户包装器；原生 `.exe` 不变。
 - **TUI 采用官方交互命令及显式参数启动。** 初始任务仍由 AO 在终端 ready 后送入，避免用户任务以 `-` 开头时被 CLI 误认为参数。模型与 AO permission mode 映射到 CodeBuddy 文档确认的选项；未选择模型时使用 CLI 自身配置。
 - **只信任本次 AO 选定的 workspace。** 通过进程级 `--settings` overlay 提供该目录的 `trustedDirectories`，避免初始任务误送入目录信任对话框；不设置 `trustAll`，也不写入用户全局信任配置。工具权限仍由 CodeBuddy 自己执行，AO 的 hook 不返回授权决定；`bypassPermissions` 也不绕过供应商保留的高风险确认。
 - **TUI restore 只按 hook 捕获的 CodeBuddy 原生 session ID 调用 `--resume`。** 没有可验证的原生 ID 时按 AO 既有 restore 语义新开会话；禁止用 AO session ID 冒充供应商 session ID。

@@ -62,7 +62,10 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 }
 
 func launchArgs(binary string, config ports.AgentConfig, permission ports.PermissionMode, workspace string) ([]string, error) {
-	args := []string{binary}
+	args, err := commandPrefix(binary)
+	if err != nil {
+		return nil, err
+	}
 	// AO owns and deliberately selected this workspace. Trust only that exact
 	// directory through a process-local settings overlay, never the user profile
 	// or trustAll. Otherwise the initial task could answer the trust dialog.

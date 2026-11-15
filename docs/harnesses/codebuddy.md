@@ -18,6 +18,11 @@ installer's Windows directory, and `~/.local/bin`. It never downloads a second
 CLI or reads WorkBuddy's private credentials. The CodeBuddy login, model service
 configuration, and account remain owned by CodeBuddy.
 
+On Windows, AO launches the official npm package's Node entry directly so
+settings and paths retain their original argument boundaries. Native `.exe`
+installs are launched directly. Unrecognized custom batch wrappers require
+using the official npm layout or a native executable.
+
 ## Session behavior
 
 Select CodeBuddy Code as the project's worker/orchestrator, or spawn a TUI
