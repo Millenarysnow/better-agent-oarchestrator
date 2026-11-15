@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/opencodev2"
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
@@ -14,6 +15,43 @@ type openCodeTransitionAgent struct{ transitionAgent }
 
 func (openCodeTransitionAgent) NativeConversationID(ctx context.Context, ref ports.SessionRef, mode domain.SessionMode, providerID string) (string, bool, error) {
 	return opencodev2.New().NativeConversationID(ctx, ref, mode, providerID)
+}
+
+type openCodeSurfaceTransitionAgent struct{ openCodeTransitionAgent }
+
+func (openCodeSurfaceTransitionAgent) InspectTerminalSurface(output string) ports.TerminalSurfaceObservation {
+	return (transitionSurfaceAgent{}).InspectTerminalSurface(output)
+}
+
+func TestOpenCode2HandoffCleansTheThreadSelectedAfterDrain(t *testing.T) {
+	m, st, rt, chat, _ := newTransitionManager(t, domain.SessionModeTUI)
+	useFastInterfaceTransitionTimings(m)
+	s := &openCodeTransitionStore{transitionStore: st}
+	m.store = s
+	m.agents = singleAgent{agent: openCodeSurfaceTransitionAgent{}}
+	rec := st.sessions["session-1"]
+	rec.Harness = domain.HarnessOpenCodeV2
+	rec.Metadata.AgentSessionID = "ses_before"
+	rec.Activity.LastActivityAt = time.Now().Add(-time.Minute)
+	st.sessions[rec.ID] = rec
+	rt.aliveByHandle = map[string]bool{"runtime-1": true}
+	rt.outputForCall = func(_ int) string {
+		current := st.sessions[rec.ID]
+		current.Metadata.AgentSessionID = "ses_after"
+		st.sessions[rec.ID] = current
+		return idleTerminalOutput
+	}
+	tr, err := m.StartInterfaceTransition(context.Background(), rec.ID, domain.SessionModeChat,
+		domain.SessionInterfaceTransitionDrain, domain.SessionInterfaceTransitionHistoryStrict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settled := awaitTransition(t, st, tr.ID); settled.Phase != domain.SessionInterfaceTransitionCompleted {
+		t.Fatalf("handoff = %+v", settled)
+	}
+	if s.deletedNativeID != "ses_after" || chat.start.ProviderConversationID != "ao-harness:opencode-v2:ses_after" {
+		t.Fatalf("cleaned %q after importing %q", s.deletedNativeID, chat.start.ProviderConversationID)
+	}
 }
 
 func (openCodeTransitionAgent) NativeConversationExists(context.Context, ports.SessionRef, string, map[string]string) (bool, error) {

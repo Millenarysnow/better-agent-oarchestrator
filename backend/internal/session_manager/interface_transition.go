@@ -490,6 +490,7 @@ func (m *Manager) runInterfaceTransition(
 		return
 	}
 	sourceRuntimeHandle = runtimeHandle(rec.Metadata)
+	sourceNativeConversationID := rec.Metadata.AgentSessionID
 	// Claim the raw terminal input path before target preflight or the first idle
 	// observation. Without this gate a mux client can submit work after the TUI is
 	// observed idle but before Destroy, and that accepted work is then killed by
@@ -568,6 +569,7 @@ func (m *Manager) runInterfaceTransition(
 			return
 		}
 		transition.NativeConversationID = resolvedID
+		sourceNativeConversationID = current.Metadata.AgentSessionID
 	}
 	if err := m.moveInterfaceTransitionWithNativeID(
 		transition.ID,
@@ -708,7 +710,7 @@ func (m *Manager) runInterfaceTransition(
 		if cleaner, ok := m.store.(interface {
 			DeleteTerminalTurnsForThread(context.Context, domain.SessionID, domain.AgentHarness, string) error
 		}); ok {
-			if err := cleaner.DeleteTerminalTurnsForThread(ctx, rec.ID, rec.Harness, rec.Metadata.AgentSessionID); err != nil {
+			if err := cleaner.DeleteTerminalTurnsForThread(ctx, rec.ID, rec.Harness, sourceNativeConversationID); err != nil {
 				m.logger.Warn("delete imported terminal turns", "sessionID", rec.ID, "error", err)
 			}
 		}
