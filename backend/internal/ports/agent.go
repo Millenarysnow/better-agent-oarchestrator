@@ -684,6 +684,25 @@ type SemanticMessageAcceptanceSignaler interface {
 	EmitsSemanticMessageAcceptance() bool
 }
 
+// AgentTerminalMessageSender accepts an internal message through the running
+// terminal provider's native protocol. A nil error proves durable admission of
+// this delivery ID; writing to a PTY or observing generic activity is insufficient.
+type AgentTerminalMessageSender interface {
+	SendTerminalMessage(context.Context, TerminalMessageConfig) error
+}
+
+// TerminalMessageConfig identifies the controller epoch and native conversation
+// that own an internal delivery. DeliveryID stays stable across retries and
+// runtime restarts; LaunchID fences the transport, not the provider message ID.
+type TerminalMessageConfig struct {
+	DataDir         string
+	SessionID       domain.SessionID
+	LaunchID        string
+	NativeSessionID string
+	DeliveryID      string
+	Message         string
+}
+
 // BlockedActivitySignaler is an OPTIONAL capability an Agent adapter may
 // implement to report whether its harness emits a decision-pause signal (a
 // permission/approval prompt that flips Activity.State to blocked) AND can

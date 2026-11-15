@@ -5243,8 +5243,9 @@ func (m *Manager) SendWithOptions(ctx context.Context, id domain.SessionID, mess
 
 // SendSemantic delivers an internal message and returns only after the target
 // agent has accepted that exact message. Chat uses its native accepted-turn
-// boundary. Supported TUIs correlate the durable id through UserPromptSubmit;
-// a successful pane write alone never satisfies this method.
+// boundary. Native terminal senders prove durable provider admission; other
+// supported TUIs correlate the durable id through UserPromptSubmit. A successful
+// pane write alone never satisfies this method.
 func (m *Manager) SendSemantic(ctx context.Context, id domain.SessionID, message, clientMessageID string) error {
 	rec, ok, err := m.store.GetSession(ctx, id)
 	if err != nil {
@@ -5259,6 +5260,13 @@ func (m *Manager) SendSemantic(ctx context.Context, id domain.SessionID, message
 			return ErrSemanticAcceptanceUnsupported
 		}
 		return sendErr
+	}
+	if m.agents != nil {
+		if agent, found := m.agents.Agent(rec.Harness); found {
+			if sender, supported := agent.(ports.AgentTerminalMessageSender); supported {
+				return m.sendNativeTerminalMessage(ctx, rec, sender, message, clientMessageID)
+			}
+		}
 	}
 	if !m.harnessSemanticAcceptance(rec.Harness) {
 		return ErrSemanticAcceptanceUnsupported
