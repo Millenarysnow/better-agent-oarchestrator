@@ -10,7 +10,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/ports"
 )
 
-const prefix = "ao-harness:"
+const prefix = domain.HarnessConversationIDPrefix
 
 // Encode records the harness beside an otherwise opaque provider conversation
 // ID. The ACP transport continues to use the raw ID internally.

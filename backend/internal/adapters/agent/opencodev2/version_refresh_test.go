@@ -23,8 +23,10 @@ printf '%s' '{"info":{"id":"ses_original"},"messages":[{"text":"papaya"}]}'
 	if err := os.WriteFile(binary, []byte(script), 0755); err != nil {
 		t.Fatal(err)
 	}
-	exists, err := New().NativeConversationExists(context.Background(), ports.SessionRef{WorkspacePath: t.TempDir()}, "ses_original", map[string]string{"AO_EXPECTED_DATA_HOME": filepath.Join(home, "opencode-v2-home")})
-	if err != nil || !exists {
-		t.Fatalf("isolated exact history export: %t, %v", exists, err)
+	for _, id := range []string{"ses_original", "ao-harness:opencode-v2:ses_original"} {
+		exists, err := New().NativeConversationExists(context.Background(), ports.SessionRef{WorkspacePath: t.TempDir()}, id, map[string]string{"AO_EXPECTED_DATA_HOME": filepath.Join(home, "opencode-v2-home")})
+		if err != nil || !exists {
+			t.Fatalf("isolated exact history export: %t, %v", exists, err)
+		}
 	}
 }

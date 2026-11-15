@@ -84,6 +84,11 @@ func (*Plugin) SendTerminalMessage(ctx context.Context, cfg ports.TerminalMessag
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	nativeID, err := terminalNativeID(cfg.NativeSessionID)
+	if err != nil {
+		return err
+	}
+	cfg.NativeSessionID = nativeID
 	if cfg.DataDir == "" || cfg.SessionID == "" || cfg.LaunchID == "" || cfg.NativeSessionID == "" ||
 		strings.TrimSpace(cfg.DeliveryID) == "" || strings.TrimSpace(cfg.Message) == "" {
 		return errors.New("opencode-v2: terminal report requires a controller, native session and delivery identity")

@@ -16,6 +16,10 @@ func (*Plugin) SupportsTerminalVersionRefresh() bool { return true }
 // home and private server, matching the resumed TUI. The v1 export command,
 // store and shared background server must never be used for a v2 resume.
 func (p *Plugin) NativeConversationExists(ctx context.Context, ref ports.SessionRef, nativeID string, env map[string]string) (bool, error) {
+	nativeID, err := terminalNativeID(nativeID)
+	if err != nil || nativeID == "" {
+		return false, err
+	}
 	binary, err := p.ResolveBinary(ctx)
 	if err != nil {
 		return false, err

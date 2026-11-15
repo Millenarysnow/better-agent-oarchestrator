@@ -473,11 +473,20 @@ func (s *Service) startLocked(ctx context.Context, cfg StartConfig) (*Controller
 			rec.Metadata.ConversationCheckpointGeneration != "" &&
 			rec.Metadata.ConversationCheckpointNativeID != ""
 		trusted := trustedProvenance &&
-			rec.Metadata.ConversationCheckpointNativeID == cfg.ProviderConversationID
+			domain.SameNativeConversationID(cfg.Harness, rec.Metadata.ConversationCheckpointNativeID, cfg.ProviderConversationID)
 		if rec.Harness == domain.HarnessClaudeCode && trustedProvenance && nativeEvidence == "" {
 			replayCheckpoint.hardMismatches = append(replayCheckpoint.hardMismatches, ports.ChatHistoryMismatchUnsettledBoundary)
 		}
-		if rec.Metadata.ConversationCheckpointUnsettled ||
+		// Older OpenCode 2 activity-only Stops created an unresolved flag with
+		// no turn witness. Native load, rather than that observation, supplies
+		// history. Any retained user/checkpoint fact still keeps the hard gate.
+		observationalOpenCode2 := rec.Harness == domain.HarnessOpenCodeV2 &&
+			(checkpointState == domain.ConversationCheckpointEmpty || checkpointState == domain.ConversationCheckpointLegacy) &&
+			rec.Metadata.ConversationCheckpointGeneration == "" && rec.Metadata.ConversationCheckpointNativeID == "" &&
+			rec.Metadata.ConversationCheckpointTurnID == "" && nativeEvidence == "" &&
+			rec.Metadata.LatestUserPrompt == "" && rec.Metadata.LatestAssistantUpdate == "" &&
+			rec.Metadata.LatestUserPromptAt.IsZero()
+		if (rec.Metadata.ConversationCheckpointUnsettled && !observationalOpenCode2) ||
 			(checkpointState == domain.ConversationCheckpointComplete &&
 				strings.TrimSpace(rec.Metadata.LatestUserPrompt) == "" &&
 				strings.TrimSpace(rec.Metadata.LatestAssistantUpdate) != "") {

@@ -26,6 +26,10 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if len(os.Args) >= 2 && os.Args[1] == "acp" && os.Getenv("AO_TEST_OPENCODE_V2_ACP_PROVIDER") == "1" {
+		runOpenCodeV2ACPProvider()
+		os.Exit(0)
+	}
 	if len(os.Args) >= 7 && os.Args[1] == "chat-host" {
 		protocol := persistenthost.ProtocolRaw
 		fingerprint := ""
@@ -56,6 +60,10 @@ func TestOpenCodeV2ACPProviderHelper(t *testing.T) {
 	if os.Getenv("AO_TEST_OPENCODE_V2_ACP_PROVIDER") != "1" {
 		return
 	}
+	runOpenCodeV2ACPProvider()
+}
+
+func runOpenCodeV2ACPProvider() {
 	// With steering on, the fake answers like OpenCode 2.2.7: it advertises
 	// `_meta.steering`, holds each prompt open until a steer is injected, and
 	// refuses guidance worded "too late" the way an idle session does.
@@ -99,7 +107,19 @@ func TestOpenCodeV2ACPProviderHelper(t *testing.T) {
 			if steering {
 				meta = `"_meta":{"steering":{"supported":true}},`
 			}
-			_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1,"agentCapabilities":{"sessionCapabilities":{"resume":{}}},"authMethods":[],%s"agentInfo":{"name":"OpenCode","version":%q}}}`+"\n", request.ID, meta, os.Getenv("AO_TEST_OPENCODE_VERSION"))
+			_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":1,"agentCapabilities":{"loadSession":%t,"sessionCapabilities":{"resume":{}}},"authMethods":[],%s"agentInfo":{"name":"OpenCode","version":%q}}}`+"\n", request.ID, os.Getenv("AO_TEST_OPENCODE_V2_LOAD") == "1", meta, os.Getenv("AO_TEST_OPENCODE_VERSION"))
+		case "session/load":
+			if os.Getenv("AO_TEST_OPENCODE_V2_LOAD_FAILURE") == "1" {
+				_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","id":%s,"error":{"code":-32603,"message":"transcript unavailable"}}`+"\n", request.ID)
+				continue
+			}
+			for _, msg := range []struct{ kind, id, text string }{
+				{"user_message_chunk", "msg_terminal_user", "Existing terminal question"},
+				{"agent_message_chunk", "msg_terminal_answer", "Existing terminal answer"},
+			} {
+				_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":%q,"update":{"sessionUpdate":%q,"messageId":%q,"content":{"type":"text","text":%q}}}}`+"\n", request.Params.SessionID, msg.kind, msg.id, msg.text)
+			}
+			_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","id":%s,"result":{}}`+"\n", request.ID)
 		case "session/prompt":
 			if !steering {
 				_, _ = fmt.Fprintf(os.Stdout, `{"jsonrpc":"2.0","id":%s,"result":{}}`+"\n", request.ID)

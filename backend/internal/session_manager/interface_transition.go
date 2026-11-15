@@ -708,7 +708,7 @@ func (m *Manager) runInterfaceTransition(
 		if cleaner, ok := m.store.(interface {
 			DeleteTerminalTurnsForThread(context.Context, domain.SessionID, domain.AgentHarness, string) error
 		}); ok {
-			if err := cleaner.DeleteTerminalTurnsForThread(ctx, rec.ID, rec.Harness, transition.NativeConversationID); err != nil {
+			if err := cleaner.DeleteTerminalTurnsForThread(ctx, rec.ID, rec.Harness, rec.Metadata.AgentSessionID); err != nil {
 				m.logger.Warn("delete imported terminal turns", "sessionID", rec.ID, "error", err)
 			}
 		}

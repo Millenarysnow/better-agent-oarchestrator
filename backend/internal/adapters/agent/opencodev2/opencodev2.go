@@ -65,7 +65,10 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
-	nativeID := strings.TrimSpace(cfg.Session.Metadata[ports.MetadataKeyAgentSessionID])
+	nativeID, err := terminalNativeID(cfg.Session.Metadata[ports.MetadataKeyAgentSessionID])
+	if err != nil {
+		return nil, false, err
+	}
 	if nativeID == "" {
 		return nil, false, nil
 	}

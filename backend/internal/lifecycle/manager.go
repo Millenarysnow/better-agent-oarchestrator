@@ -702,7 +702,8 @@ retryProjection:
 	if previousNativeID == "" {
 		previousNativeID = rec.Metadata.ProviderConversationID
 	}
-	nativeIdentityChanged := s.AgentSessionID != "" && previousNativeID != "" && s.AgentSessionID != previousNativeID
+	nativeIdentityChanged := s.AgentSessionID != "" && previousNativeID != "" &&
+		!domain.SameNativeConversationID(rec.Harness, s.AgentSessionID, previousNativeID)
 	if nativeIdentityChanged && !s.Timestamp.IsZero() &&
 		!rec.Metadata.NativeIdentityObservedAt.IsZero() && !s.Timestamp.After(rec.Metadata.NativeIdentityObservedAt) {
 		m.mu.Unlock()
@@ -856,11 +857,13 @@ retryProjection:
 			checkpoint.LatestAssistantUpdateAt = timeOr(s.Timestamp, now)
 			checkpoint.ConversationCheckpointState = domain.ConversationCheckpointComplete
 		} else if ownerGeneration != "" && checkpointNativeID != "" {
-			if rec.Harness == domain.HarnessAgy && mode == domain.SessionModeTUI {
-				// Antigravity's documented PreInvocation and Stop hooks carry the
-				// conversation id but no user prompt or turn identity. Its Stop
+			if mode == domain.SessionModeTUI && (rec.Harness == domain.HarnessAgy ||
+				(rec.Harness == domain.HarnessOpenCodeV2 && s.ProviderTurnID == "" &&
+					s.LatestAssistantUpdate == "" && s.FinalAssistantMessage == "")) {
+				// Antigravity and OpenCode 2 activity observations carry the
+				// conversation id but no user prompt or turn identity. This Stop
 				// cannot prove a new AO checkpoint boundary, so retain the previous
-				// coherent checkpoint and let Agy's native ACP history replay prove
+				// coherent checkpoint and let native ACP history replay prove
 				// the complete conversation at handoff. Marking this as an unresolved
 				// boundary would permanently reject every TUI-to-Chat resume.
 				s.LatestAssistantUpdate = ""
