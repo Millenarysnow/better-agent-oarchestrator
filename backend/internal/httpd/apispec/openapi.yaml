@@ -18469,6 +18469,7 @@ components:
         agent:
           enum:
           - claude-code
+          - codebuddy
           - codex
           - aider
           - opencode
@@ -22827,6 +22828,7 @@ components:
         harness:
           enum:
           - claude-code
+          - codebuddy
           - codex
           - aider
           - opencode

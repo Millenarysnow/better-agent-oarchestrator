@@ -206,6 +206,20 @@ func TestRegistryIncludesCommandCode(t *testing.T) {
 	t.Fatal("Harnessed does not contain command-code")
 }
 
+func TestRegistryIncludesCodeBuddy(t *testing.T) {
+	reg, err := Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, ok := reg.Get("codebuddy")
+	if !ok || adapter.Manifest().Name != "CodeBuddy Code" {
+		t.Fatalf("codebuddy adapter = %+v, ok=%v", adapter, ok)
+	}
+	if !domain.HarnessCodeBuddy.IsKnown() {
+		t.Fatal("CodeBuddy is not selectable")
+	}
+}
+
 func TestRegistryIncludesCodewhale(t *testing.T) {
 	reg, err := Build()
 	if err != nil {

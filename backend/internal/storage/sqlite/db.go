@@ -2180,6 +2180,15 @@ func reconcileHarnessConstraint(db *sql.DB) error {
 	if _, err := db.Exec(`PRAGMA writable_schema = ON`); err != nil {
 		return fmt.Errorf("schema repair: enable writable_schema for sessions harness constraint: %w", err)
 	}
+	// The CodeBuddy migration widens any legacy constraint before these exact
+	// historical repairs run. Temporarily remove it so the old shapes still
+	// match, then restore it after all historical replacements below.
+	hasCodeBuddy := strings.Contains(schema, "'codebuddy'")
+	if hasCodeBuddy {
+		if _, err := db.Exec(`UPDATE sqlite_master SET sql = replace(sql, '''codebuddy'', ', '') WHERE type = 'table' AND name = 'sessions'`); err != nil {
+			return fmt.Errorf("schema repair: normalize CodeBuddy constraint: %w", err)
+		}
+	}
 	if !needsNativeAssistant {
 		// Older constraints need exact historical repairs. Temporarily remove
 		// Hermes wherever it appears before the final fake entry, apply those
@@ -2303,6 +2312,9 @@ func reconcileHarnessConstraint(db *sql.DB) error {
 	}
 	if needsMemcode {
 		repairs = append(repairs, replacement{"'fake'))", "'memcode', 'fake'))"})
+	}
+	if hasCodeBuddy {
+		repairs = append(repairs, replacement{"'fake'))", "'codebuddy', 'fake'))"})
 	}
 	for _, r := range repairs {
 		if _, err := db.Exec(

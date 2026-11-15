@@ -198,7 +198,8 @@ export function LocalHarnessContent({ focusAgentId, hostId, search, onDetailChan
 	};
 
 	const plans = useMemo(() => new Map(installers.data?.map((plan) => [plan.agentId, plan]) ?? []), [installers.data]);
-	const jobMap = useMemo(() => new Map(jobs.data?.map((job) => [job.target, job]) ?? []), [jobs.data]);
+	// Selectable harnesses can be externally managed and have no install target.
+	const jobMap = useMemo(() => new Map<string, InstallJob>(jobs.data?.map((job) => [job.target, job]) ?? []), [jobs.data]);
 	const agentAuthPlans = useMemo(() => new Map(authPlans.data?.map((plan) => [plan.agentId, plan]) ?? []), [authPlans.data]);
 	const readinessAgents = useMemo(() => new Map(agents.data?.agents.map((agent) => [agent.id, agent]) ?? []), [agents.data]);
 	const installed = useMemo(() => installedAgentIds(agents.data), [agents.data]);

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { AGENT_OPTIONS, agentLabel, getAgentIdentity } from "./agents";
 
 describe("agent identities", () => {
+	it("names the local CodeBuddy CLI separately from WorkBuddy", () => {
+		expect(AGENT_OPTIONS.filter((id) => id === "codebuddy")).toHaveLength(1);
+		expect(agentLabel("codebuddy")).toBe("CodeBuddy Code");
+		expect(getAgentIdentity("codebuddy")).toMatchObject({ id: "codebuddy", initial: "C" });
+	});
 	it("keeps OpenCode 2 a distinct worker option with its own label", () => {
 		expect(AGENT_OPTIONS).toContain("opencode-v2");
 		expect(agentLabel("opencode")).toBe("OpenCode");

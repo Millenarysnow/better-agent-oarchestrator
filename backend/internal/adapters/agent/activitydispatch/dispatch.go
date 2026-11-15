@@ -16,6 +16,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/auggie"
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/claudecode"
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/cline"
+	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/codebuddy"
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/codex"
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/commandcode"
 	"github.com/aoagents/agent-orchestrator/backend/internal/adapters/agent/continueagent"
@@ -47,6 +48,7 @@ var Derivers = map[string]DeriveFunc{
 	// Adapters that parse hook payloads for finer-grained state keep their own
 	// deriver; the rest share the name-only StandardDeriveActivityState.
 	"claude-code":  claudecode.DeriveActivityState,
+	"codebuddy":    codebuddy.DeriveActivityState,
 	"command-code": commandcode.DeriveActivityState,
 	"grok":         claudecode.DeriveActivityState,
 	"muse":         muse.DeriveActivityState,
@@ -116,7 +118,10 @@ const (
 // Command Code exposes no permission-request hook, so hook silence cannot
 // prove an idle pipeline either.
 var signalCoverageOverrides = map[domain.AgentHarness]SignalCoverage{
-	domain.HarnessAider:       SignalCoveragePartial,
+	domain.HarnessAider: SignalCoveragePartial,
+	// CodeBuddy's Beta hooks vary by CLI version. Do not infer a dead signal
+	// pipeline from silence until the installed version is audited.
+	domain.HarnessCodeBuddy:   SignalCoveragePartial,
 	domain.HarnessCommandCode: SignalCoveragePartial,
 	domain.HarnessContinue:    SignalCoveragePartial,
 	domain.HarnessMemcode:     SignalCoveragePartial,

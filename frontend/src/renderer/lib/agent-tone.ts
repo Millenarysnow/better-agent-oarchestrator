@@ -2,6 +2,7 @@ import type { AgentId } from "./agent-options";
 
 const AGENT_HUES: Record<AgentId, number | null> = {
 	"claude-code": 40,
+	codebuddy: null,
 	codex: 299,
 	aider: 150,
 	opencode: null,
