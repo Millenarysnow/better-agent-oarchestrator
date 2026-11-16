@@ -205,3 +205,167 @@ func TestPreflightTUISwitchTargetAcceptsAOSavedLogin(t *testing.T) {
 		t.Fatalf("preflight without a data directory = %v, want the native sign-in refusal", err)
 	}
 }
+
+type switchAgentRegistry map[domain.AgentHarness]ports.Agent
+
+func (r switchAgentRegistry) Agent(harness domain.AgentHarness) (ports.Agent, bool) {
+	agent, ok := r[harness]
+	return agent, ok
+}
+
+type switchLifecycleAgent struct {
+	fakeAgent
+	name        string
+	events      *[]string
+	failLaunch  bool
+	failCleanup bool
+}
+
+func (a *switchLifecycleAgent) GetAgentHooks(context.Context, ports.WorkspaceHookConfig) error {
+	*a.events = append(*a.events, "prepare-"+a.name)
+	return nil
+}
+
+func (a *switchLifecycleAgent) CleanupWorkspace(context.Context, ports.WorkspaceHookConfig) error {
+	*a.events = append(*a.events, "cleanup-"+a.name)
+	if a.failCleanup {
+		return errors.New("injected cleanup failure")
+	}
+	return nil
+}
+
+func (a *switchLifecycleAgent) GetLaunchCommand(context.Context, ports.LaunchConfig) ([]string, error) {
+	*a.events = append(*a.events, "launch-"+a.name)
+	if a.failLaunch {
+		return nil, errors.New("injected launch failure")
+	}
+	return []string{"launch-" + a.name}, nil
+}
+
+func TestSwitchingAwayFromAgyCleansSessionFilesBeforePreparingTarget(t *testing.T) {
+	settle, poll := tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll
+	tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll = 10*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll = settle, poll })
+
+	store := newFakeStore()
+	store.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: testRoleAgents()}
+	rec := mkLive("mer-1")
+	rec.Harness, rec.Mode, rec.Kind = domain.HarnessAgy, domain.SessionModeTUI, domain.KindWorker
+	rec.Activity.State = domain.ActivityExited
+	rec.Metadata.Branch, rec.Metadata.Prompt = "branch", "TASK"
+	rec.Metadata.AgentSessionID, rec.Metadata.RuntimeLaunchID = "source-native", "source-launch"
+	store.sessions[rec.ID] = rec
+	events := []string{}
+	agy := &switchLifecycleAgent{name: "agy", events: &events}
+	codex := &switchLifecycleAgent{name: "codex", events: &events}
+	manager := New(Deps{
+		Runtime:   &childProbeRuntime{fakeRuntime: &fakeRuntime{}, childAlive: true},
+		Agents:    switchAgentRegistry{domain.HarnessAgy: agy, domain.HarnessCodex: codex},
+		Workspace: &fakeWorkspace{},
+		Store:     store,
+		Messenger: &fakeMessenger{},
+		Lifecycle: &fakeLCM{store: store},
+		LookPath:  func(string) (string, error) { return "/bin/true", nil },
+	})
+	if err := manager.SwitchTUIProvider(context.Background(), rec.ID, domain.ProviderSwitchRequest{
+		TargetHarness: domain.HarnessCodex,
+		HandoffNote:   "Continue the task.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cleanupIndex, prepareIndex := -1, -1
+	for i, event := range events {
+		if event == "cleanup-agy" {
+			cleanupIndex = i
+		}
+		if event == "prepare-codex" {
+			prepareIndex = i
+		}
+	}
+	if cleanupIndex < 0 || prepareIndex < 0 || cleanupIndex >= prepareIndex {
+		t.Fatalf("switch events = %v, want AGY cleanup before Codex preparation", events)
+	}
+	if got := store.sessions[rec.ID].Harness; got != domain.HarnessCodex {
+		t.Fatalf("harness after switch = %q, want codex", got)
+	}
+}
+
+func TestFailedAgySwitchTargetIsCleanedBeforeSourceProviderRestore(t *testing.T) {
+	settle, poll := tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll
+	tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll = 10*time.Millisecond, time.Millisecond
+	t.Cleanup(func() { tuiSwitchTargetSettle, tuiSwitchTargetSettlePoll = settle, poll })
+
+	store := newFakeStore()
+	store.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: testRoleAgents()}
+	rec := mkLive("mer-1")
+	rec.Harness, rec.Mode, rec.Kind = domain.HarnessClaudeCode, domain.SessionModeTUI, domain.KindWorker
+	rec.Activity.State = domain.ActivityExited
+	rec.Metadata.Branch, rec.Metadata.Prompt = "branch", "TASK"
+	rec.Metadata.AgentSessionID, rec.Metadata.RuntimeLaunchID = "source-native", "source-launch"
+	store.sessions[rec.ID] = rec
+	events := []string{}
+	claude := &switchLifecycleAgent{name: "claude", events: &events}
+	agy := &switchLifecycleAgent{name: "agy", events: &events, failLaunch: true}
+	manager := New(Deps{
+		Runtime:   &childProbeRuntime{fakeRuntime: &fakeRuntime{}, childAlive: true},
+		Agents:    switchAgentRegistry{domain.HarnessClaudeCode: claude, domain.HarnessAgy: agy},
+		Workspace: &fakeWorkspace{},
+		Store:     store,
+		Messenger: &fakeMessenger{},
+		Lifecycle: &fakeLCM{store: store},
+		LookPath:  func(string) (string, error) { return "/bin/true", nil },
+	})
+	err := manager.SwitchTUIProvider(context.Background(), rec.ID, domain.ProviderSwitchRequest{
+		TargetHarness: domain.HarnessAgy,
+		HandoffNote:   "Continue the task.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "target provider failed to start") {
+		t.Fatalf("SwitchTUIProvider error = %v, want target launch failure", err)
+	}
+
+	index := func(want string) int {
+		for i, event := range events {
+			if event == want {
+				return i
+			}
+		}
+		return -1
+	}
+	agyPrepare, agyCleanup, claudePrepare := index("prepare-agy"), index("cleanup-agy"), index("prepare-claude")
+	if agyPrepare < 0 || agyCleanup <= agyPrepare || claudePrepare <= agyCleanup {
+		t.Fatalf("switch rollback events = %v, want AGY prepare, AGY cleanup, then Claude restore", events)
+	}
+	if got := store.sessions[rec.ID].Harness; got != domain.HarnessClaudeCode {
+		t.Fatalf("harness after rollback = %q, want claude-code", got)
+	}
+}
+
+func TestAgySourceCleanupFailureRestoresSourceWithoutStartingTarget(t *testing.T) {
+	store := newFakeStore()
+	store.projects["mer"] = domain.ProjectRecord{ID: "mer", Config: testRoleAgents()}
+	rec := mkLive("mer-1")
+	rec.Harness, rec.Mode, rec.Kind = domain.HarnessAgy, domain.SessionModeTUI, domain.KindWorker
+	rec.Activity.State = domain.ActivityExited
+	rec.Metadata.Branch, rec.Metadata.Prompt = "branch", "TASK"
+	rec.Metadata.AgentSessionID = "source-native"
+	store.sessions[rec.ID] = rec
+	events := []string{}
+	agy := &switchLifecycleAgent{name: "agy", events: &events, failCleanup: true}
+	codex := &switchLifecycleAgent{name: "codex", events: &events}
+	manager := New(Deps{
+		Runtime: &fakeRuntime{}, Agents: switchAgentRegistry{domain.HarnessAgy: agy, domain.HarnessCodex: codex},
+		Workspace: &fakeWorkspace{}, Store: store, Messenger: &fakeMessenger{}, Lifecycle: &fakeLCM{store: store},
+		LookPath: func(string) (string, error) { return "/bin/true", nil },
+	})
+	err := manager.SwitchTUIProvider(context.Background(), rec.ID, domain.ProviderSwitchRequest{TargetHarness: domain.HarnessCodex, HandoffNote: "Continue."})
+	if err == nil || !strings.Contains(err.Error(), "could not clean the source AGY workspace") {
+		t.Fatalf("switch error = %v, want source cleanup failure", err)
+	}
+	if got := strings.Join(events, ","); strings.Contains(got, "codex") || !strings.Contains(got, "prepare-agy") {
+		t.Fatalf("events = %v, want only source cleanup and restoration", events)
+	}
+	if store.sessions[rec.ID].Harness != domain.HarnessAgy {
+		t.Fatal("failed cleanup changed the session's harness")
+	}
+}

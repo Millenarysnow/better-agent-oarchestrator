@@ -56,6 +56,7 @@ func TestGetLaunchCommand(t *testing.T) {
 				"agy",
 				"--add-dir", "/tmp/ws",
 			}
+			want = append(want, "--agent", agySessionAgentName)
 			want = append(want, tc.flags...)
 			want = append(want, []string{
 				"--model", "gemini-3-pro",
@@ -83,6 +84,7 @@ func TestGetLaunchCommandNoModel(t *testing.T) {
 	want := []string{
 		"agy",
 		"--add-dir", "/tmp/ws",
+		"--agent", agySessionAgentName,
 		"--dangerously-skip-permissions",
 		"--prompt-interactive", "fix this",
 	}
@@ -138,6 +140,7 @@ func TestGetRestoreCommand(t *testing.T) {
 				"agy",
 				"--add-dir", "/tmp/ws",
 			}
+			want = append(want, "--agent", agySessionAgentName)
 			want = append(want, tc.flags...)
 			want = append(want, []string{
 				"--model", "gemini-3-flash",
@@ -226,8 +229,13 @@ func TestActivitySignalCapabilities(t *testing.T) {
 
 func TestHooksLifecycle(t *testing.T) {
 	tmpDir := t.TempDir()
+	dataDir := t.TempDir()
 	plugin := &Plugin{}
-	cfg := ports.WorkspaceHookConfig{WorkspacePath: tmpDir}
+	cfg := ports.WorkspaceHookConfig{
+		WorkspacePath: tmpDir,
+		DataDir:       dataDir,
+		SystemPrompt:  "Read " + filepath.ToSlash(filepath.Join(dataDir, "skills", "using-ao", "SKILL.md")) + " before using ao.",
+	}
 
 	installed, err := plugin.AreHooksInstalled(context.Background(), tmpDir)
 	if err != nil {
@@ -279,6 +287,32 @@ func TestHooksLifecycle(t *testing.T) {
 		t.Fatalf("unexpected Stop hooks: %#v", ao.Stop)
 	}
 
+	agentPath := agySessionAgentPath(tmpDir)
+	agentData, err := os.ReadFile(agentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, marker := range []string{"name: ao-session", "mainAgent: true", "subagent: false", agySessionAgentMark, filepath.ToSlash(agyUsingAOSkillDir(tmpDir)) + "/SKILL.md"} {
+		if !strings.Contains(string(agentData), marker) {
+			t.Errorf("session agent missing %q:\n%s", marker, agentData)
+		}
+	}
+	if strings.Contains(string(agentData), filepath.ToSlash(filepath.Join(dataDir, "skills", "using-ao"))) {
+		t.Fatalf("session agent still points outside its workspace:\n%s", agentData)
+	}
+	if _, err := os.Stat(filepath.Join(agyUsingAOSkillDir(tmpDir), "SKILL.md")); err != nil {
+		t.Fatalf("using-ao skill not installed: %v", err)
+	}
+	gitignoreData, err := os.ReadFile(filepath.Join(tmpDir, ".agents", ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/hooks.json", "/agents/ao-session.md", "/skills/using-ao", "/skills/.using-ao.ao-managed"} {
+		if !strings.Contains(string(gitignoreData), path) {
+			t.Errorf(".agents/.gitignore missing %q:\n%s", path, gitignoreData)
+		}
+	}
+
 	if err := plugin.GetAgentHooks(context.Background(), cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +337,11 @@ func TestHooksLifecycle(t *testing.T) {
 	}
 	if installed {
 		t.Fatal("expected hooks to be uninstalled after UninstallHooks")
+	}
+	for _, path := range []string{agentPath, filepath.Join(agyUsingAOSkillDir(tmpDir), "SKILL.md"), agyUsingAOSkillMarkerPath(tmpDir)} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("AO-owned path remains after cleanup: %s (err %v)", path, err)
+		}
 	}
 }
 
@@ -331,6 +370,9 @@ func TestHooksPreserveUserNamedHooks(t *testing.T) {
 	if err := plugin.GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: tmpDir}); err != nil {
 		t.Fatal(err)
 	}
+	if err := plugin.GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: tmpDir}); err != nil {
+		t.Fatalf("reinstall with user hooks is not idempotent: %v", err)
+	}
 	afterInstall := readHookRawMap(t, hooksPath)
 	if _, ok := afterInstall[agyManagedHookName]; !ok {
 		t.Fatalf("missing named hook %q", agyManagedHookName)
@@ -347,6 +389,149 @@ func TestHooksPreserveUserNamedHooks(t *testing.T) {
 	}
 	assertRawJSONEqual(t, before["user-linter"], afterUninstall["user-linter"])
 	assertRawJSONEqual(t, before["future-field"], afterUninstall["future-field"])
+}
+
+func TestHooksPreserveUserAgentAndSkillPaths(t *testing.T) {
+	workspace := t.TempDir()
+	userAgentPath := agySessionAgentPath(workspace)
+	if err := os.MkdirAll(filepath.Dir(userAgentPath), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	userAgent := []byte("---\nname: ao-session\n---\nUser-owned agent.\n")
+	if err := os.WriteFile(userAgentPath, userAgent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := New().GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: workspace}); err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("GetAgentHooks error = %v, want a custom agent collision", err)
+	}
+	gotAgent, err := os.ReadFile(userAgentPath)
+	if err != nil || !reflect.DeepEqual(gotAgent, userAgent) {
+		t.Fatalf("user agent changed: got %q, err %v", gotAgent, err)
+	}
+	if _, err := os.Stat(agyUsingAOSkillDir(workspace)); !os.IsNotExist(err) {
+		t.Fatalf("skill was installed before the agent conflict was detected: %v", err)
+	}
+
+	workspace = t.TempDir()
+	skillPath := agyUsingAOSkillDir(workspace)
+	if err := os.MkdirAll(skillPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	userSkill := []byte("---\nname: using-ao\ndescription: User-owned skill.\n---\nUser-owned.\n")
+	if err := os.WriteFile(filepath.Join(skillPath, "SKILL.md"), userSkill, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := New().GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: workspace}); err == nil || !strings.Contains(err.Error(), "refusing to overwrite") {
+		t.Fatalf("GetAgentHooks error = %v, want a skill collision", err)
+	}
+	gotSkill, err := os.ReadFile(filepath.Join(skillPath, "SKILL.md"))
+	if err != nil || !reflect.DeepEqual(gotSkill, userSkill) {
+		t.Fatalf("user skill changed: got %q, err %v", gotSkill, err)
+	}
+	if _, err := os.Stat(agyHooksPath(workspace)); !os.IsNotExist(err) {
+		t.Fatalf("hook was installed before the skill conflict was detected: %v", err)
+	}
+}
+
+func TestGetAgentHooksUsesSystemPromptFile(t *testing.T) {
+	workspace, dataDir := t.TempDir(), t.TempDir()
+	promptFile := filepath.Join(dataDir, "system.md")
+	if err := os.WriteFile(promptFile, []byte("Follow AO role instructions."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := New().GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{
+		WorkspacePath:    workspace,
+		DataDir:          dataDir,
+		SystemPromptFile: promptFile,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(agySessionAgentPath(workspace))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "Follow AO role instructions.") {
+		t.Fatalf("session agent did not read the system prompt file:\n%s", data)
+	}
+}
+
+func TestChatPreparationReleasesTerminalInstructions(t *testing.T) {
+	workspace := t.TempDir()
+	plugin := New()
+	cfg := ports.WorkspaceHookConfig{WorkspacePath: workspace, SystemPrompt: "AO terminal instructions."}
+	if err := plugin.GetAgentHooks(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	cfg.SessionMode = domain.SessionModeChat
+	if err := plugin.GetAgentHooks(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{agySessionAgentPath(workspace), agyUsingAOSkillDir(workspace), agyUsingAOSkillMarkerPath(workspace)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("terminal-only instructions remain for Chat at %s: %v", path, err)
+		}
+	}
+	if _, ok := readHookRawMap(t, agyHooksPath(workspace))[agyManagedHookName]; !ok {
+		t.Fatal("Chat preparation removed the shared activity hooks")
+	}
+	if err := plugin.UninstallHooks(context.Background(), workspace); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChatHandoffReleasesTerminalInstructions(t *testing.T) {
+	workspace, home := t.TempDir(), t.TempDir()
+	plugin := New()
+	if err := plugin.GetAgentHooks(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: workspace, SystemPrompt: "AO terminal instructions."}); err != nil {
+		t.Fatal(err)
+	}
+	id := "native-conversation"
+	conversation := filepath.Join(home, CLIStorageDir, "conversations", id+".db")
+	if err := os.MkdirAll(filepath.Dir(conversation), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(conversation, []byte("conversation"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := plugin.PrepareInterfaceHandoffStorage(context.Background(), ports.SessionRef{WorkspacePath: workspace},
+		domain.SessionModeTUI, domain.SessionModeChat, id, map[string]string{"GEMINI_HOME": home}); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{agySessionAgentPath(workspace), agyUsingAOSkillDir(workspace), agyUsingAOSkillMarkerPath(workspace)} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("terminal-only instructions remain after Chat handoff at %s: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ACPStorageDir, "conversations", id+".db")); err != nil {
+		t.Fatalf("handoff lost the copied conversation: %v", err)
+	}
+}
+
+func TestUninstallHooksPreservesForeignInstructions(t *testing.T) {
+	workspace := t.TempDir()
+	for path, body := range map[string]string{
+		agySessionAgentPath(workspace):                           "user custom agent",
+		filepath.Join(agyUsingAOSkillDir(workspace), "SKILL.md"): "user skill",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := New().CleanupWorkspace(context.Background(), ports.WorkspaceHookConfig{WorkspacePath: workspace}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{
+		agySessionAgentPath(workspace):                           "user custom agent",
+		filepath.Join(agyUsingAOSkillDir(workspace), "SKILL.md"): "user skill",
+	} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != want {
+			t.Errorf("user file changed at %s: %q, %v", path, got, err)
+		}
+	}
 }
 
 func TestHooksRejectMalformedJSON(t *testing.T) {

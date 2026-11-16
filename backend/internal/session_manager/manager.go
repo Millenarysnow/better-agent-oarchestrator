@@ -1528,7 +1528,7 @@ func (m *Manager) Spawn(ctx context.Context, cfg ports.SpawnConfig) (result doma
 			return domain.SessionRecord{}, 0, 0, fmt.Errorf("spawn %s: %w", id, ports.ErrAgentAuthRequired)
 		}
 	}
-	if err := m.prepareWorkspace(ctx, agent, id, ws.Path, systemPrompt, systemPromptFile, adapterConfig, env); err != nil {
+	if err := m.prepareWorkspace(ctx, agent, id, ws.Path, systemPrompt, systemPromptFile, adapterConfig, env, domain.SessionModeTUI); err != nil {
 		m.rollbackSeedSpawnWorkspace(ctx, rec, ws, workspaceProject, false, false)
 		return domain.SessionRecord{}, 0, 0, wrapSpawnStage(id, ErrSpawnPrepare, err)
 	}
@@ -3861,7 +3861,7 @@ func (m *Manager) relaunchSessionWithPolicyAndGeneration(ctx context.Context, op
 			return RestoreResult{}, fmt.Errorf("%s %s: %w", operation, rec.ID, ports.ErrAgentAuthRequired)
 		}
 	}
-	if err := m.prepareWorkspace(ctx, agent, rec.ID, launchPath, systemPrompt, systemPromptFile, agentConfig, env); err != nil {
+	if err := m.prepareWorkspace(ctx, agent, rec.ID, launchPath, systemPrompt, systemPromptFile, agentConfig, env, domain.SessionModeTUI); err != nil {
 		return RestoreResult{}, relaunchFailed("agent hooks", fmt.Errorf("%s %s: %w", operation, rec.ID, err))
 	}
 	if requireNativeHistory && !forceFresh {
@@ -7042,9 +7042,10 @@ func (m *Manager) augmentAgentRuntimeEnv(agent ports.Agent, env map[string]strin
 // starts the agent: installing the workspace-local activity hooks (so early
 // startup hooks can update the already-created session row), then any optional
 // PreLaunch step. Shared by Spawn and Restore.
-func (m *Manager) prepareWorkspace(ctx context.Context, agent ports.Agent, id domain.SessionID, workspacePath, systemPrompt, systemPromptFile string, agentConfig ports.AgentConfig, env map[string]string) error {
+func (m *Manager) prepareWorkspace(ctx context.Context, agent ports.Agent, id domain.SessionID, workspacePath, systemPrompt, systemPromptFile string, agentConfig ports.AgentConfig, env map[string]string, mode domain.SessionMode) error {
 	if err := agent.GetAgentHooks(ctx, ports.WorkspaceHookConfig{
 		SessionID:        string(id),
+		SessionMode:      mode,
 		WorkspacePath:    workspacePath,
 		DataDir:          m.dataDir,
 		Env:              env,

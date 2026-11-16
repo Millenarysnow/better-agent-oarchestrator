@@ -8,7 +8,7 @@
 
 **注入只属于当前 AGY session。** 不把运行时生成的角色规则写入项目 `AGENTS.md`、`.agents/rules/` 或用户级 `~/.gemini/` 配置；这些位置会跨 harness 或跨项目生效，导致切换到 Codex 等 harness 后重复或遗留指令。
 
-**不改变 AO 的通用角色提示词、其他 harness 的注入路径或 AGY Chat 能力。** AO 仍由 `session_manager` 生成角色规则，AGY adapter 只负责把它转换为 AGY 原生配置。本方案不接入 `agy acp`，也不让 AGY 使用其内建 subagent 承担 AO worker 的职责。
+**不改变 AO 的通用角色提示词、其他 harness 的注入路径或 AGY Chat 能力。** AO 仍由 `session_manager` 生成角色规则，AGY adapter 只负责把它转换为 AGY 原生配置。当前 fork 的 `agyacp` 已通过独立 ACP server 和首轮 standing-instructions preamble 服务 Chat；本方案不更换它的 transport，也不让 AGY 使用其内建 subagent 承担 AO worker 的职责。
 
 ## 核心方案
 
@@ -36,6 +36,8 @@ AGY adapter 在当前 session workspace 中生成 AO 管理的 primary custom ag
 
 **daemon restore 与新 session 使用相同的 preparation 路径。** 因为工作区是 AO session 的一部分，prompt 文件或 workspace agent 文件不能只在首次 spawn 时创建；否则进程重启后恢复的 AGY 会话可能没有 AO 角色规则。
 
+**共享 workspace preparation 必须知道本次 controller 是 Terminal UI 还是 Chat。** `WorkspaceHookConfig.SessionMode` 区分这两条指令通道；Chat preparation 只保留 activity hooks，并清理此前 TUI 使用的 custom agent 和 skill。TUI→Chat handoff 在 AGY storage bridge 完成会话复制后执行同样的指令清理，因为普通 Chat resume 不会重新安装 workspace hooks。否则同一 workspace 切到 Chat 后会保留另一条指令通道。
+
 ## 必须守住的约束与陷阱
 
 **不要把 AO 完整 system prompt 写入常驻 `AGENTS.md`、GEMINI 规则或全局 AGY custom agent。** 这些来源会随 workspace 或用户配置跨 harness 继续生效，正是切换后重复注入的来源。
@@ -54,4 +56,4 @@ AGY adapter 在当前 session workspace 中生成 AO 管理的 primary custom ag
 
 ## 未实现的部分与扩展准入
 
-该方案只覆盖 AGY Terminal UI 的 AO session。AGY ACP、runtime subagent 代理、跨 AGY native conversation 的自定义 agent 语义，以及 AGY workspace custom agent 格式变化的兼容检测均不在范围内。扩展前必须确认 AGY 原生接口仍能将 AO 指令设为主 agent system prompt，并确保 profile 不跨 AO session 或 harness 切换泄漏。
+该方案只新增 AGY Terminal UI 的指令通道。既有 AGY ACP transport 的更新、runtime subagent 代理、跨 AGY native conversation 的自定义 agent 语义，以及 AGY workspace custom agent 格式变化的兼容检测均不在范围内。扩展前必须确认 AGY 原生接口仍能将 AO 指令设为主 agent system prompt，并确保 profile 不跨 AO session 或 harness 切换泄漏。
