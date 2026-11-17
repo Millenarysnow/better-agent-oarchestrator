@@ -464,6 +464,20 @@ type DeletedSessionAccountUsage struct {
 	EstimatedCostNanos int64
 }
 
+type LocalDelivery struct {
+	ID           string
+	SessionID    string
+	BaseSha      string
+	TargetSha    string
+	TargetBranch string
+	InputError   string
+	Decision     string
+	DecisionNote string
+	DecidedBy    string
+	CreatedAt    time.Time
+	DecidedAt    sql.NullTime
+}
+
 type ManagedHarnessRelease struct {
 	Harness   string
 	Release   string
@@ -699,6 +713,9 @@ type ReviewRun struct {
 	BatchID          string
 	AutoInjectReview bool
 	TriggerSource    domain.ReviewTriggerSource
+	TargetKind       string
+	BaseSha          string
+	DeliveryID       string
 }
 
 type Session struct {
@@ -784,6 +801,7 @@ type Session struct {
 	TerminatedAt                     sql.NullTime
 	ImportSource                     string
 	DisplayNameExplicit              bool
+	AutoLocalReviewEnabled           bool
 }
 
 type SessionAgentAccount struct {

@@ -85,6 +85,9 @@ type ReviewerPromptReadinessProvider interface {
 // the reviewer needs are passed explicitly here (and embedded in the prompt /
 // message), never through environment variables.
 type ReviewInvocation struct {
+	TargetKind string
+	BaseSHA    string
+	DeliveryID string
 	// ReviewerID is a stable id for the reviewer's runtime instance (pane,
 	// native session id), derived from the worker session.
 	ReviewerID string
@@ -140,9 +143,12 @@ type ReviewInvocation struct {
 
 // ReviewTask is one PR/run in a multi-PR review trigger queue.
 type ReviewTask struct {
-	RunID     string
-	PRURL     string
-	TargetSHA string
+	TargetKind string
+	BaseSHA    string
+	DeliveryID string
+	RunID      string
+	PRURL      string
+	TargetSHA  string
 }
 
 // ReviewCommandSpec is how to launch a reviewer: the argv, any extra env, and

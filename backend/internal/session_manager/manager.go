@@ -6032,13 +6032,14 @@ func seedRecord(cfg ports.SpawnConfig, projectConfig domain.ProjectConfig, now t
 		Activity:            domain.Activity{State: domain.ActivityIdle, LastActivityAt: now},
 		// Resolved before this point and persisted here. There is no UPDATE
 		// statement that can change it afterwards.
-		Mode:              domain.NormalizeSessionMode(cfg.RequestedMode),
-		Metadata:          domain.SessionMetadata{Permissions: applySpawnAgentConfig(effectiveAgentConfig(cfg.Harness, cfg.Kind, projectConfig), cfg.AgentConfig).Permissions},
-		RequestedOutput:   cfg.RequestedOutput,
-		OutputType:        domain.SessionOutputNone,
-		AutoReviewEnabled: projectConfig.AutoReview,
-		AutoInjectReview:  true,
-		AutoInjectCI:      true,
+		Mode:                   domain.NormalizeSessionMode(cfg.RequestedMode),
+		Metadata:               domain.SessionMetadata{Permissions: applySpawnAgentConfig(effectiveAgentConfig(cfg.Harness, cfg.Kind, projectConfig), cfg.AgentConfig).Permissions},
+		RequestedOutput:        cfg.RequestedOutput,
+		OutputType:             domain.SessionOutputNone,
+		AutoReviewEnabled:      projectConfig.AutoReview,
+		AutoLocalReviewEnabled: projectConfig.AutoLocalReview,
+		AutoInjectReview:       true,
+		AutoInjectCI:           true,
 	}
 }
 
@@ -6143,7 +6144,8 @@ func promptProjectContext(projectID domain.ProjectID, project domain.ProjectReco
 		DefaultBranch: strings.TrimPrefix(cfg.DefaultBranch, "refs/heads/"),
 		Path:          project.Path,
 
-		WorkersRequestReview: cfg.WorkersRequestReview,
+		WorkersRequestReview:      cfg.WorkersRequestReview,
+		WorkersRequestLocalReview: cfg.WorkersRequestLocalReview,
 	}
 }
 

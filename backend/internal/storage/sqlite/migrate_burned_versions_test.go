@@ -259,6 +259,8 @@ var shippedMigrations = map[int64]string{
 	20261110172911382: "20261110172911382_conversation_turn_artifacts.sql",
 	20261109094334974: "20261109094334974_session_artifacts.sql",
 	20261115044553091: "20261115044553091_allow_codebuddy_harness.sql",
+
+	20261117040215519: "20261117040215519_local_delivery_review.sql",
 }
 
 // burnedVersion reports version numbers that must never be (re)used: they

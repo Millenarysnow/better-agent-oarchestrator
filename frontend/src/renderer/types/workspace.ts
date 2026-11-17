@@ -105,7 +105,7 @@ export type SessionProvisionStep = {
 };
 
 /** The daemon's observed branch facts. `unpushed` equals `commits` until the branch reaches its remote. */
-export type SessionBranchState = { commits: number; remoteBranch?: string; remoteHead?: string; unpushed: number };
+export type SessionBranchState = { headSha?: string; worktreeDirty?: boolean; commits: number; remoteBranch?: string; remoteHead?: string; unpushed: number };
 
 /** The session's current launch still runs a harness release an update has replaced. */
 export type SessionStaleBinary = { version: string; since: string; switchFailedAt?: string };
@@ -136,6 +136,8 @@ export type WorkspaceSession = {
 	};
 	/** Whether the daemon may automatically review this session after it becomes idle. */
 	autoReviewEnabled?: boolean;
+	autoLocalReviewEnabled?: boolean;
+	localReview?: import("../../api/schema").components["schemas"]["LocalReviewSummary"];
 	kind?: SessionKind;
 	/**
 	 * Which controller is currently committed for this session. The session

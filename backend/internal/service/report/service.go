@@ -35,20 +35,22 @@ type ArtifactRecorder interface {
 
 // Service validates and creates durable worker reports.
 type Service struct {
-	store     Store
-	now       func() time.Time
-	newID     func() string
-	onCreated func(domain.ReportRecord)
-	artifacts ArtifactRecorder
+	completion func(context.Context, domain.ReportRecord) (*domain.LocalDelivery, error)
+	store      Store
+	now        func() time.Time
+	newID      func() string
+	onCreated  func(domain.ReportRecord)
+	artifacts  ArtifactRecorder
 }
 
 // Deps configures a Service. Artifacts is optional.
 type Deps struct {
-	Store     Store
-	Now       func() time.Time
-	NewID     func() string
-	OnCreated func(domain.ReportRecord)
-	Artifacts ArtifactRecorder
+	Completion func(context.Context, domain.ReportRecord) (*domain.LocalDelivery, error)
+	Store      Store
+	Now        func() time.Time
+	NewID      func() string
+	OnCreated  func(domain.ReportRecord)
+	Artifacts  ArtifactRecorder
 }
 
 // New constructs a report Service.
@@ -59,7 +61,7 @@ func New(d Deps) *Service {
 	if d.NewID == nil {
 		d.NewID = func() string { return "rpt_" + uuid.NewString() }
 	}
-	return &Service{store: d.Store, now: d.Now, newID: d.NewID, onCreated: d.OnCreated, artifacts: d.Artifacts}
+	return &Service{store: d.Store, completion: d.Completion, now: d.Now, newID: d.NewID, onCreated: d.OnCreated, artifacts: d.Artifacts}
 }
 
 // ListProject returns persisted report facts ordered by created_at then id,
@@ -132,7 +134,25 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (domain.ReportR
 		CreatedAt: now, DeliveryState: domain.ReportPending, AvailableAt: availableAt,
 		SettlementDeadline: settlementDeadline, RepeatCount: 1,
 	}
-	created, err := s.store.CreateReport(ctx, rec)
+	var delivery *domain.LocalDelivery
+	if s.completion != nil && rec.State == domain.ReportDone {
+		delivery, err = s.completion(ctx, rec)
+		if err != nil {
+			return domain.ReportRecord{}, err
+		}
+	}
+	var created domain.ReportRecord
+	if delivery != nil {
+		writer, ok := s.store.(interface {
+			CreateReportWithLocalDelivery(context.Context, domain.ReportRecord, *domain.LocalDelivery) (domain.ReportRecord, error)
+		})
+		if !ok {
+			return domain.ReportRecord{}, errors.New("report: atomic local delivery writer is required")
+		}
+		created, err = writer.CreateReportWithLocalDelivery(ctx, rec, delivery)
+	} else {
+		created, err = s.store.CreateReport(ctx, rec)
+	}
 	if err != nil {
 		return created, err
 	}

@@ -19,11 +19,12 @@ type branchStateWriter interface {
 const branchStateRemote = "origin"
 
 type branchTarget struct {
-	rec      domain.SessionRecord
-	branch   string // empty on a detached HEAD
-	head     string // detached HEAD commit
-	baseRefs []string
-	baseSHA  string
+	rec           domain.SessionRecord
+	branch        string // empty on a detached HEAD
+	head          string // detached HEAD commit
+	baseRefs      []string
+	baseSHA       string
+	localDelivery bool
 }
 
 // ReconcileBranchStates refreshes every live session's persisted branch facts.
@@ -72,6 +73,14 @@ func (s *Service) reconcileBranchStates(ctx context.Context, writer branchStateW
 	projects := map[domain.ProjectID]projectLookup{}
 	repos := map[string][]branchTarget{}
 	live := map[domain.SessionID]bool{}
+	ids := make([]domain.SessionID, 0, len(recs))
+	for _, rec := range recs {
+		ids = append(ids, rec.ID)
+	}
+	localFacts, err := s.localReviewFacts(ctx, ids)
+	if err != nil {
+		return err
+	}
 	for _, rec := range recs {
 		if rec.IsTerminated || rec.Metadata.WorkspacePath == "" || isStandaloneScratchWorkspace(rec) {
 			continue
@@ -94,11 +103,12 @@ func (s *Service) reconcileBranchStates(ctx context.Context, writer branchStateW
 			continue
 		}
 		repos[commonDir] = append(repos[commonDir], branchTarget{
-			rec:      rec,
-			branch:   branch,
-			head:     head,
-			baseRefs: branchBaseRefs(rec.Metadata.DiffBaseRef, defaultBranchForProject(project.rec, project.ok)),
-			baseSHA:  strings.TrimSpace(rec.Metadata.DiffBaseSHA),
+			rec:           rec,
+			branch:        branch,
+			head:          head,
+			baseRefs:      branchBaseRefs(rec.Metadata.DiffBaseRef, defaultBranchForProject(project.rec, project.ok)),
+			baseSHA:       strings.TrimSpace(rec.Metadata.DiffBaseSHA),
+			localDelivery: localFacts[rec.ID].Delivery.ID != "",
 		})
 	}
 	if full {
@@ -142,12 +152,21 @@ func (s *Service) reconcileBranchTarget(ctx context.Context, writer branchStateW
 	}
 	rec := target.rec
 	fingerprint := local + " " + remote + " " + base
+	dirty := false
+	if target.localDelivery {
+		status, err := gitWorkspaceOutput(ctx, rec.Metadata.WorkspacePath, "status", "--porcelain", "--untracked-files=normal")
+		if err != nil {
+			return nil
+		}
+		dirty = strings.TrimSpace(status) != ""
+		fingerprint += " " + strconv.FormatBool(dirty)
+	}
 	if rec.BranchState != nil && s.branchTips[rec.ID] == fingerprint {
 		return nil
 	}
 
 	root := rec.Metadata.WorkspacePath
-	var state domain.SessionBranchState
+	state := domain.SessionBranchState{HeadSHA: local, WorktreeDirty: dirty}
 	if base != "" {
 		commits, ok := gitRevListCount(ctx, root, base+".."+local)
 		if !ok {

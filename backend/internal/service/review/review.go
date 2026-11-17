@@ -82,6 +82,7 @@ type Manager interface {
 
 // Service is the API-facing review service. It delegates to the core engine.
 type Service struct {
+	localWake          func()
 	engine             *reviewcore.Engine
 	store              Store
 	requester          ports.SCMReviewRequester
@@ -457,6 +458,7 @@ func (s *Service) ResolveReviewComment(ctx context.Context, workerID domain.Sess
 // TriggerRequest is a client-requested review pass with its same-commit and
 // feedback policy.
 type TriggerRequest struct {
+	Local   bool
 	Harness domain.ReviewerHarness
 	Config  domain.AgentConfig
 	// Source is manual (a person) or agent (an AO session through the CLI).
@@ -494,6 +496,10 @@ func (s *Service) TriggerRequested(ctx context.Context, workerID domain.SessionI
 	}
 	if req.Rerun && req.RejectReviewedHead {
 		return TriggerOutcome{}, fmt.Errorf("%w: rerun cannot be combined with rejecting an already-reviewed head", ErrInvalid)
+	}
+	if req.Local {
+		req.Source = source
+		return s.triggerLocal(ctx, workerID, req)
 	}
 	branchLookupFoundNone, err := s.refreshPRs(ctx, workerID, strings.TrimSpace(req.PRURL))
 	if err != nil {
@@ -876,6 +882,13 @@ func (s *Service) SubmitMany(ctx context.Context, workerID domain.SessionID, rev
 	// its review on the provider, and the SCM observer forwards unresolved
 	// review comments to the worker like any other reviewer's. AO does not send
 	// a second, separate verdict message.
+	for _, run := range runs {
+		if run.TargetKind == "local" {
+			if err := s.queueLocalResult(ctx, run); err != nil {
+				return nil, err
+			}
+		}
+	}
 	return runs, nil
 }
 
@@ -904,6 +917,9 @@ func (s *Service) submitOne(ctx context.Context, workerID domain.SessionID, revi
 		return domain.ReviewRun{}, fmt.Errorf("%w: review run %q does not belong to worker %q", ErrInvalid, runID, workerID)
 	}
 
+	if run.TargetKind == "local" && (strings.TrimSpace(body) == "" || githubReviewID != "") {
+		return domain.ReviewRun{}, fmt.Errorf("%w: local reviews require a full report and cannot record a provider review id", ErrInvalid)
+	}
 	switch run.Status {
 	case domain.ReviewRunRunning:
 		session, found, err := s.store.GetSession(ctx, workerID)

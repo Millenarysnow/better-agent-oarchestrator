@@ -1,6 +1,7 @@
 package review
 
 import (
+	"context"
 	"sort"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
@@ -25,6 +26,9 @@ const (
 
 // PRReviewState is one PR-scoped review decision for a worker session.
 type PRReviewState struct {
+	TargetKind  string            `json:"targetKind,omitempty" enum:"pr,local"`
+	BaseSHA     string            `json:"baseSha,omitempty"`
+	DeliveryID  string            `json:"deliveryId,omitempty"`
 	PRURL       string            `json:"prUrl"`
 	PRNumber    int               `json:"prNumber"`
 	Title       string            `json:"title"`
@@ -138,4 +142,38 @@ func latestRunsByPRAndSHA(runs []domain.ReviewRun) map[string]domain.ReviewRun {
 		}
 	}
 	return latest
+}
+
+// planTargets keeps local delivery identity separate from provider PR identity.
+func planTargets(prs []domain.PullRequest, local *domain.LocalDelivery, runs []domain.ReviewRun) []PRReviewState {
+	if local == nil {
+		return Plan(prs, runs)
+	}
+	state := PRReviewState{TargetKind: "local", BaseSHA: local.BaseSHA, DeliveryID: local.ID, TargetSHA: local.TargetSHA, Title: "Local delivery", Status: ReviewStateNeedsReview}
+	if run, ok := domain.CurrentLocalReviewRun(local.ID, runs); ok {
+		state.LatestRun = &run
+	}
+	if run := state.LatestRun; run != nil {
+		switch {
+		case run.Status == domain.ReviewRunRunning:
+			state.Status = ReviewStateRunning
+		case run.Status == domain.ReviewRunComplete && run.Verdict == domain.VerdictApproved:
+			state.Status = ReviewStateUpToDate
+		case run.Status == domain.ReviewRunComplete && run.Verdict == domain.VerdictChangesRequested:
+			state.Status = ReviewStateChangesRequested
+		}
+	}
+	return []PRReviewState{state}
+}
+
+func (e *Engine) sessionPlans(ctx context.Context, id domain.SessionID, prs []domain.PullRequest, runs []domain.ReviewRun) []PRReviewState {
+	out := Plan(prs, runs)
+	if store, ok := e.store.(interface {
+		GetLocalDelivery(context.Context, domain.SessionID) (domain.LocalDelivery, bool, error)
+	}); ok {
+		if local, found, err := store.GetLocalDelivery(ctx, id); err == nil && found {
+			out = append(out, planTargets(nil, &local, runs)...)
+		}
+	}
+	return out
 }

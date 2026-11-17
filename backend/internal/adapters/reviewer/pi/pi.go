@@ -161,11 +161,12 @@ func (*Reviewer) ReviewMessage(ctx context.Context, inv ports.ReviewInvocation) 
 func activateManifest(inv ports.ReviewInvocation) (reviewgateway.Environment, string, error) {
 	tasks := inv.ReviewQueue
 	if len(tasks) == 0 {
-		tasks = []ports.ReviewTask{{RunID: inv.RunID, PRURL: inv.PRURL, TargetSHA: inv.TargetSHA}}
+		tasks = []ports.ReviewTask{{RunID: inv.RunID, PRURL: inv.PRURL, TargetSHA: inv.TargetSHA, TargetKind: inv.TargetKind, BaseSHA: inv.BaseSHA, DeliveryID: inv.DeliveryID}}
 	}
 	manifestTasks := make([]reviewgateway.Task, 0, len(tasks))
 	for _, task := range tasks {
 		manifestTasks = append(manifestTasks, reviewgateway.Task{
+			TargetKind: task.TargetKind, BaseSHA: task.BaseSHA, DeliveryID: task.DeliveryID,
 			RunID: task.RunID, PRURL: task.PRURL, TargetSHA: task.TargetSHA,
 			TaskPromptFile: inv.TaskPromptFile,
 		})
@@ -192,4 +193,4 @@ func (*Reviewer) ReviewCancel(context.Context) (ports.ReviewCancelSpec, error) {
 
 const piPolicy = `Pi reviewer security policy
 
-You are running in Pi's interactive TUI with no built-in tools and no project or user resources. Use only the Orchestrator review tools supplied by the loaded Orchestrator extension. Use github_post_review instead of the task file's gh command, and use ao_review_submit instead of its ao CLI command. Those structured tools enforce the current review queue and do not provide arbitrary shell execution. Never ask for or attempt to enable other tools or resources.`
+You are running in Pi's interactive TUI with no built-in tools and no project or user resources. Use only the Orchestrator review tools supplied by the loaded Orchestrator extension. For PR tasks use github_post_review instead of the task file's gh command. Local tasks must never publish a provider review. Use ao_review_submit instead of the ao CLI command for both targets. Those structured tools enforce the current review queue and do not provide arbitrary shell execution. Never ask for or attempt to enable other tools or resources.`

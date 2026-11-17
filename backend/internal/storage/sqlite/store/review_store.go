@@ -235,18 +235,31 @@ func (s *Store) UpdateReviewActivity(ctx context.Context, id string, state domai
 func (s *Store) InsertReviewRun(ctx context.Context, r domain.ReviewRun) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if r.TargetKind == "" {
+		r.TargetKind = "pr"
+	}
+	if r.TargetKind == "local" {
+		d, err := s.qw.GetLocalDelivery(ctx, string(r.SessionID))
+		if err != nil {
+			return err
+		}
+		if d.ID != r.DeliveryID || d.TargetSha != r.TargetSHA || d.BaseSha != r.BaseSHA || d.InputError != "" || (d.Decision != "" && d.Decision != "needs_input") {
+			return errors.New("local delivery has changed or already has an acceptance decision")
+		}
+	}
 	if r.TriggerSource == "" {
 		r.TriggerSource = domain.ReviewTriggerManual
 	}
 	err := s.qw.InsertReviewRun(ctx, gen.InsertReviewRunParams{
-		ID:               r.ID,
-		ReviewID:         r.ReviewID,
-		SessionID:        r.SessionID,
-		BatchID:          r.BatchID,
-		Harness:          r.Harness,
-		TriggerSource:    r.TriggerSource,
-		PRURL:            r.PRURL,
-		TargetSha:        r.TargetSHA,
+		ID:            r.ID,
+		ReviewID:      r.ReviewID,
+		SessionID:     r.SessionID,
+		BatchID:       r.BatchID,
+		Harness:       r.Harness,
+		TriggerSource: r.TriggerSource,
+		PRURL:         r.PRURL,
+		TargetSha:     r.TargetSHA,
+		TargetKind:    r.TargetKind, BaseSha: r.BaseSHA, DeliveryID: r.DeliveryID,
 		Status:           r.Status,
 		Verdict:          r.Verdict,
 		Body:             r.Body,
@@ -490,14 +503,15 @@ func reviewRunFromRow(r gen.ReviewRun) domain.ReviewRun {
 		deliveredAt = &t
 	}
 	return domain.ReviewRun{
-		ID:               r.ID,
-		ReviewID:         r.ReviewID,
-		SessionID:        r.SessionID,
-		BatchID:          r.BatchID,
-		Harness:          r.Harness,
-		TriggerSource:    r.TriggerSource,
-		PRURL:            r.PRURL,
-		TargetSHA:        r.TargetSha,
+		ID:            r.ID,
+		ReviewID:      r.ReviewID,
+		SessionID:     r.SessionID,
+		BatchID:       r.BatchID,
+		Harness:       r.Harness,
+		TriggerSource: r.TriggerSource,
+		PRURL:         r.PRURL,
+		TargetSHA:     r.TargetSha,
+		TargetKind:    r.TargetKind, BaseSHA: r.BaseSha, DeliveryID: r.DeliveryID,
 		Status:           r.Status,
 		Verdict:          r.Verdict,
 		Body:             r.Body,

@@ -1733,6 +1733,10 @@ func (s *Service) sessionsFromRecords(ctx context.Context, filtered []domain.Ses
 			return nil, fmt.Errorf("list workspace cleanup facts: %w", err)
 		}
 	}
+	localFacts, err := s.localReviewFacts(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("local review facts: %w", err)
+	}
 	titles := s.storedTerminalTitles(ctx, ids)
 	out := make([]domain.Session, 0, len(filtered))
 	for _, rec := range filtered {
@@ -1741,6 +1745,7 @@ func (s *Service) sessionsFromRecords(ctx context.Context, filtered []domain.Ses
 		if err != nil {
 			return nil, err
 		}
+		s.applyLocalReview(&sess, localFacts)
 		sess.TerminalTitle = presentedTerminalTitle(rec, titles[rec.ID])
 		out = append(out, sess)
 	}
@@ -2249,6 +2254,11 @@ func (s *Service) toSession(ctx context.Context, rec domain.SessionRecord) (doma
 	if err != nil {
 		return domain.Session{}, err
 	}
+	localFacts, e := s.localReviewFacts(ctx, []domain.SessionID{rec.ID})
+	if e != nil {
+		return domain.Session{}, e
+	}
+	s.applyLocalReview(&sess, localFacts)
 	sess.TerminalTitle = presentedTerminalTitle(rec, s.storedTerminalTitles(ctx, []domain.SessionID{rec.ID})[rec.ID])
 	return sess, nil
 }

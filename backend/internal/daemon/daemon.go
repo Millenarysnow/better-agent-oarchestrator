@@ -766,7 +766,14 @@ func Run(buildVersion string) error {
 		return errors.New("wire report delivery: session manager lacks semantic send support")
 	}
 	var reportCoordinator *reportsvc.Coordinator
-	reportSvc := reportsvc.New(reportsvc.Deps{Store: store, Artifacts: chatSvc, OnCreated: func(domain.ReportRecord) {
+	reportSvc := reportsvc.New(reportsvc.Deps{Store: store, Artifacts: chatSvc, Completion: func(ctx context.Context, r domain.ReportRecord) (*domain.LocalDelivery, error) {
+		if local, ok := reviewSvc.(interface {
+			PrepareLocalCompletion(context.Context, domain.ReportRecord) (*domain.LocalDelivery, error)
+		}); ok {
+			return local.PrepareLocalCompletion(ctx, r)
+		}
+		return nil, nil
+	}, OnCreated: func(domain.ReportRecord) {
 		if reportCoordinator != nil {
 			reportCoordinator.Wake()
 		}
@@ -775,6 +782,9 @@ func Run(buildVersion string) error {
 		Store:    store,
 		Delivery: reportSemanticDelivery{chat: chatSvc, sessions: reportSessions, store: store},
 	})
+	if local, ok := reviewSvc.(interface{ WithLocalReviewWake(func()) }); ok {
+		local.WithLocalReviewWake(reportCoordinator.Wake)
+	}
 	chatSvc.SetReportCoordinator(reportCoordinator)
 	reportDeliveryDone := reportCoordinator.Start(ctx)
 	defer func() {

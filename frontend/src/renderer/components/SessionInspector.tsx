@@ -1,3 +1,4 @@
+import { LocalDeliveryReviewPanel } from "./LocalDeliveryReviewPanel";
 import { apiErrorException } from "../lib/api-error-exception";
 import { BrowserIcon } from "./icons";
 import { artifactFileIcon } from "./artifact-file-icon";
@@ -1678,6 +1679,7 @@ function LocalReviewsSection({
 	);
 	return (
 		<>
+            {!hasPr && session.kind !== "orchestrator" && !session.cloud && <LocalDeliveryReviewPanel session={session} hostId={hostId} onOpenReviewer={(surface)=>{if(surface.mode==="chat")onOpenReviewerChat?.(surface.reviewId);else if(surface.handleId)onOpenReviewerTerminal?.({handleId:surface.handleId,harness:surface.harness});}} />}
 			{/* Running a review is an action; reading them is a list. The action stays
 			    on top, then one list carrying both sources keyed by PR. */}
 			<ReviewPanel

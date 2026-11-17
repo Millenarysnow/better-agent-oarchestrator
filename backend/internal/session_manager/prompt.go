@@ -26,7 +26,8 @@ type promptProject struct {
 	Path          string
 	// WorkersRequestReview is the project's opt-in for workers to request an
 	// AO review of their own PR when it is ready.
-	WorkersRequestReview bool
+	WorkersRequestLocalReview bool
+	WorkersRequestReview      bool
 }
 
 type taskPromptConfig struct {
@@ -269,6 +270,7 @@ Your job is to coordinate work, not to perform implementation. Keep the project 
 
 - Treat the orchestrator session as coordination-only by default.
 - For every implementation, fix, test, or PR update task, always spawn or redirect a worker session; do not perform the task in the orchestrator session.
+- For a local delivery without a PR, inspect the complete done report, request `+"`ao review trigger <worker-session-id> --local`"+`, read `+"`ao review ls <worker-session-id> --json`"+`, then record acceptance with `+"`ao review decide <worker-session-id> --delivery <report-id> --decision accepted`"+` or return blocking work with changes_requested and --note. A worker cannot accept its own delivery. Send the worker the blocking findings only after recording the return. After one blocking rework round, use needs_input and ask the user if blockers remain. Non-blocking suggestions do not cause rework. Acceptance never authorizes merge or push.
 - To review implementation owned by a worker, use Orchestrator's native reviewer with `+"`ao review trigger <worker-session-id>`"+`; its inline comments reach the implementation worker, and `+"`ao review ls <worker-session-id>`"+` shows the verdict.
 - When asked to review someone else's PR, spawn or use one normal review-only worker session without claiming or attaching the target PR. Give it the PR reference and review scope. It may submit the requested provider review and comments. Do not use Orchestrator's native reviewer, create an ownership-only placeholder, or require an implementation owner for this external review.
 - Never ever make code changes directly in the orchestrator session.
@@ -422,7 +424,7 @@ func workerNativeReviewPrompt(project promptProject, hasOrchestrator bool) strin
 	}
 	policy := fmt.Sprintf(`This project leaves starting a review to people:
 
-- Before running `+"`ao review trigger`"+`, ask %s whether to start a built-in review of your PR, and run it once they agree. When they ask you to request one, run it.`, askWho)
+- For PR reviews, before running `+"`ao review trigger`"+`, ask %s whether to start a built-in review of your PR, and run it once they agree. When they ask you to request one, run it.`, askWho)
 	if project.WorkersRequestReview {
 		policy = `This project asks workers to request it:
 
@@ -430,7 +432,11 @@ func workerNativeReviewPrompt(project promptProject, hasOrchestrator bool) strin
 - The reviewer's findings arrive in this session as PR review comments. Address each one, push, and run ` + "`ao review trigger`" + ` again for the new head.
 - An approval adds no comments, so check ` + "`ao review ls`" + ` for the verdict before reporting the work done. If it shows the run failed or was cancelled, run ` + "`ao review trigger`" + ` again; nothing else will tell you.`
 	}
-	return `## Native Review
+	localPolicy := `For local work without a PR, send a complete done report after committing and validating all changes. The coordinator can request an independent local review with ao review trigger <worker-session-id> --local. Local approval does not authorize merging or pushing.`
+	if project.WorkersRequestLocalReview {
+		localPolicy += ` After your done report, run ao review trigger --local yourself, then wait for the coordinator acceptance or blocking rework instructions. Never create a PR merely to obtain a review.`
+	}
+	return "## Local Review\n\n" + localPolicy + "\n\n" + `## Native Review
 
 Orchestrator has a built-in adversarial code reviewer for implementation PRs owned by this session. It is an isolated Orchestrator reviewer agent, not another worker: it reviews the PR head in this workspace, posts its review on the PR with an inline comment for each change it requires, and those comments are forwarded to this session. It is not the path for reviewing someone else's PR.
 

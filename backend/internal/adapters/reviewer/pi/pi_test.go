@@ -75,7 +75,9 @@ func TestExtensionRejectsCommandInjectionSurfaces(t *testing.T) {
 		`authorizedTask(params.runId, params.prUrl, params.targetSha)`,
 		`task.prUrl !== prUrl || task.targetSha !== targetSha`,
 		`commit_id: task.targetSha`,
-		`manifest.tasks.some((task) => task.runId === review.runId)`,
+		`manifest.tasks.find((task) => task.runId === review.runId)`,
+		`if (!task) throw new Error`,
+		`local review cannot publish to a provider`,
 		`writeFile(input, JSON.stringify`,
 	} {
 		if !strings.Contains(text, want) {

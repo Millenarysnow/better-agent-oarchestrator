@@ -3923,6 +3923,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sessions/{sessionId}/reviews/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the current local delivery */
+        get: operations["getLocalReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{sessionId}/reviews/local/auto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set session local review automation */
+        put: operations["setLocalReviewAuto"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{sessionId}/reviews/local/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept or return the current local delivery */
+        post: operations["decideLocalReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sessions/{sessionId}/reviews/rerequest": {
         parameters: {
             query?: never;
@@ -5899,6 +5950,7 @@ export interface components {
             artifactFiles?: components["schemas"]["SessionArtifact"][];
             autoInjectCI: boolean;
             autoInjectReview: boolean;
+            autoLocalReviewEnabled: boolean;
             autoReviewEnabled: boolean;
             branch?: string;
             branchNaming?: boolean;
@@ -5925,6 +5977,7 @@ export interface components {
             lastInteractionAt?: null | string;
             /** Format: date-time */
             lastUserMessageAt?: null | string;
+            localReview?: components["schemas"]["LocalReviewSummary"];
             /** @enum {string} */
             mode: "chat" | "tui";
             model?: string;
@@ -6876,6 +6929,51 @@ export interface components {
             snapshot?: boolean;
             truncated: boolean;
         };
+        LocalDelivery: {
+            baseSha: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            decidedAt?: null | string;
+            decidedBy?: string;
+            /** @enum {string} */
+            decision?: "" | "accepted" | "changes_requested" | "needs_input";
+            decisionNote?: string;
+            id: string;
+            inputError?: string;
+            sessionId: string;
+            targetBranch: string;
+            targetSha: string;
+        };
+        LocalReviewAutoRequest: {
+            enabled: null | boolean;
+        };
+        LocalReviewAutoResponse: {
+            enabled: boolean;
+        };
+        LocalReviewDecisionRequest: {
+            actorSessionId?: string;
+            /** @enum {string} */
+            decision: "accepted" | "changes_requested" | "needs_input";
+            deliveryId: string;
+            note?: string;
+        };
+        LocalReviewDecisionResponse: {
+            /** @enum {string} */
+            decision: "accepted" | "changes_requested" | "needs_input";
+        };
+        LocalReviewResponse: {
+            localReview: null | components["schemas"]["LocalReviewSummary"];
+        };
+        LocalReviewSummary: {
+            delivery: components["schemas"]["LocalDelivery"];
+            /** Format: int64 */
+            reworkCount: number;
+            runId?: string;
+            stale: boolean;
+            status?: string;
+            verdict?: string;
+        };
         MarkAllNotificationsReadRequest: {
             /** @description Acknowledge exactly these notifications. Omit to acknowledge every unread notification; paginating clients should send the ids they actually rendered so later pages stay unread. */
             ids?: string[];
@@ -7032,12 +7130,16 @@ export interface components {
             projectName?: string;
         };
         PRReviewState: {
+            baseSha?: string;
+            deliveryId?: string;
             latestRun?: components["schemas"]["ReviewRun"];
             prNumber: number;
             prUrl: string;
             previousRun?: components["schemas"]["ReviewRun"];
             /** @enum {string} */
             status: "needs_review" | "running" | "up_to_date" | "changes_requested" | "ineligible";
+            /** @enum {string} */
+            targetKind?: "pr" | "local";
             targetSha: string;
             title: string;
         };
@@ -7092,6 +7194,7 @@ export interface components {
             agentConfig?: components["schemas"]["AgentConfig"];
             agentRules?: string;
             agentRulesFile?: string;
+            autoLocalReview?: boolean;
             autoReview?: boolean;
             canonicalRepoURL?: string;
             containerReap?: components["schemas"]["ContainerReapConfig"];
@@ -7109,6 +7212,7 @@ export interface components {
             symlinks?: string[];
             trackerIntake?: components["schemas"]["TrackerIntakeConfig"];
             worker?: components["schemas"]["RoleOverride"];
+            workersRequestLocalReview?: boolean;
             workersRequestReview?: boolean;
         };
         ProjectGetResponse: {
@@ -7369,12 +7473,14 @@ export interface components {
         };
         ReviewRun: {
             autoInjectReview: boolean;
+            baseSha?: string;
             batchId: string;
             body: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             deliveredAt?: null | string;
+            deliveryId?: string;
             githubReviewId: string;
             harness: string;
             id: string;
@@ -7382,6 +7488,8 @@ export interface components {
             reviewId: string;
             sessionId: string;
             status: string;
+            /** @enum {string} */
+            targetKind?: "pr" | "local";
             targetSha: string;
             /** @enum {string} */
             triggerSource: "manual" | "agent" | "auto";
@@ -7481,9 +7589,11 @@ export interface components {
         };
         SessionBranchState: {
             commits: number;
+            headSha?: string;
             remoteBranch?: string;
             remoteHead?: string;
             unpushed: number;
+            worktreeDirty?: boolean;
         };
         SessionHistoryResponse: {
             offset: number;
@@ -8354,6 +8464,8 @@ export interface components {
             harness?: "claude-code" | "codex" | "copilot" | "cursor" | "kilocode" | "opencode" | "opencode-v2" | "kiro" | "pi" | "agy" | "devin" | "droid" | "kimi" | "kimchi" | "muse" | "amp" | "aider" | "grok" | "crush" | "auggie" | "cline" | "autohand";
             /** @enum {string} */
             interfaceMode?: "chat" | "tui";
+            /** @description Review the current local delivery without a pull request. */
+            local?: boolean;
             /** @description Restrict the pass to this pull request, attaching it to the session first if AO does not track it yet (never from another active session). Omit to review every eligible PR on the session. */
             prUrl?: string;
             /** @description Return 409 instead of reusing when every open PR head is already being reviewed or already has a review. */
@@ -23273,6 +23385,119 @@ export interface operations {
             };
             /** @description Not Implemented */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    getLocalReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session identifier, e.g. project-1. */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalReviewResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    setLocalReviewAuto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session identifier, e.g. project-1. */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalReviewAutoRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalReviewAutoResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+        };
+    };
+    decideLocalReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Session identifier, e.g. project-1. */
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalReviewDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalReviewDecisionResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

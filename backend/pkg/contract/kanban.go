@@ -37,6 +37,7 @@ const (
 // facts are what a session with no PR yet, or a worker that stopped mid-loop,
 // has to report.
 type KanbanSessionFacts struct {
+	LocalDelivery *LocalKanbanFacts
 	SessionFacts
 	// Interrupted reports that the worker's latest Chat turn settled as
 	// interrupted, the same state the timeline shows. That is usually the
@@ -47,6 +48,16 @@ type KanbanSessionFacts struct {
 	AutoReview        bool
 	AutoInjectReview  bool
 	AutoInjectCI      bool
+}
+
+// LocalKanbanFacts are immutable-delivery observations and explicit decisions.
+// Worker completion and reviewer approval never imply acceptance.
+type LocalKanbanFacts struct {
+	Stale        bool
+	Invalid      bool
+	Decision     string
+	ReviewStatus string
+	Verdict      string
 }
 
 // KanbanReviewRunFacts summarize AO's own review passes against one PR's
@@ -269,6 +280,29 @@ func DeriveKanbanPresentation(
 ) KanbanPresentation {
 	if session.IsTerminated {
 		return KanbanPresentation{Column: KanbanArchive, DisplayStatus: DisplayTerminated}
+	}
+	if len(prs) == 0 && session.LocalDelivery != nil {
+		local := session.LocalDelivery
+		switch {
+		case local.Stale || local.Decision == "changes_requested":
+			return KanbanPresentation{Column: KanbanBuilding, DisplayStatus: buildingDisplayStatus(session, now, noSignalGrace)}
+		case local.Decision == "accepted":
+			return KanbanPresentation{Column: KanbanReady, DisplayStatus: DisplayApproved}
+		case local.ReviewStatus == "running":
+			return KanbanPresentation{Column: KanbanValidating, DisplayStatus: DisplayReviewing}
+		case local.Invalid || local.Decision == "needs_input":
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayNeedsInput}
+		case local.ReviewStatus == "failed":
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayReviewFailed}
+		case local.ReviewStatus == "cancelled":
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayReviewCancelled}
+		case local.Verdict == "changes_requested":
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayChangesRequested}
+		case local.Verdict == "approved":
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayApproved}
+		default:
+			return KanbanPresentation{Column: KanbanNeedsReview, DisplayStatus: DisplayAwaitingReview}
+		}
 	}
 	if len(prs) == 0 && session.HasArtifactOutput {
 		return KanbanPresentation{
