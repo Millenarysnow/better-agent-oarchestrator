@@ -167,7 +167,7 @@ export function SessionsBoard({ projectId, hostId }: SessionsBoardProps) {
 	const participantsBySession = useSessionParticipants(activeSessions, !hostId);
 	const { userId: cloudUserId } = useCloudCp(!hostId && activeSessions.some((session) => Boolean(session.cloud)));
 	const boardSessions = activeSessions.map((session) =>
-		session.status === "no_signal" || session.displayStatus === "No signal"
+		!session.localReview && (session.status === "no_signal" || session.displayStatus === "No signal")
 			? { ...session, kanbanColumn: "building" as const }
 			: session,
 	);

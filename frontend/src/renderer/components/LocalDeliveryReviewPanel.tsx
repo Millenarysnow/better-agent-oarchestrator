@@ -22,7 +22,7 @@ export function LocalDeliveryReviewPanel({ session, hostId, onOpenReviewer }: {
 	const { t } = useTranslation();
 	const queryClient = useQueryClient();
 	const [note, setNote] = useState("");
-		const localKey = ["local-delivery-review", hostId ?? "local", session.id];
+		const localKey = [...sessionReviewsQueryKey(session.id, hostId), "local-delivery", session.localReview?.delivery.id ?? "latest"];
 	const localQuery = useQuery({
 		queryKey: localKey,
 		queryFn: async () => {
@@ -58,7 +58,6 @@ export function LocalDeliveryReviewPanel({ session, hostId, onOpenReviewer }: {
 			return { id, host: hostId };
 		},
 		onSuccess: ({ id, host }) => {
-			void queryClient.invalidateQueries({ queryKey: ["local-delivery-review", host ?? "local", id] });
 			void queryClient.invalidateQueries({ queryKey: sessionReviewsQueryKey(id, host) });
 			void queryClient.invalidateQueries({ queryKey: workspaceQueryKeyForHost(host) });
 		},

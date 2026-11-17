@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { components } from "../../api/schema";
@@ -16,7 +16,7 @@ const delivery: Local = { delivery: { id: "report-1", sessionId: session.id, bas
 function show(local: Local | null) {
 	get.mockImplementation(async (path: string) => ({ data: path.endsWith("/local") ? { localReview: local } : { reviews: [], runs: [], activeReviewers: [] } }));
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-	return render(<QueryClientProvider client={client}><LocalDeliveryReviewPanel session={session} /></QueryClientProvider>);
+	return { ...render(<QueryClientProvider client={client}><LocalDeliveryReviewPanel session={session} /></QueryClientProvider>), client };
 }
 
 describe("local delivery review", () => {
@@ -50,5 +50,13 @@ describe("local delivery review", () => {
 		await userEvent.type(screen.getByRole("textbox"), "Fix the failing acceptance criterion");
 		await userEvent.click(button);
 		await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/sessions/{sessionId}/reviews/local/decision", expect.objectContaining({ body: { deliveryId: "report-1", decision: "changes_requested", note: "Fix the failing acceptance criterion" } })));
+	});
+
+	it("refreshes the local verdict when review change events invalidate the shared review key", async () => {
+		const { client } = show({ ...delivery, status: "running" });
+		expect(await screen.findByRole("status")).toHaveTextContent("Reviewing");
+		get.mockImplementation(async (path: string) => ({ data: path.endsWith("/local") ? { localReview: { ...delivery, status: "complete", verdict: "approved" } } : { reviews: [], runs: [] } }));
+		await act(() => client.invalidateQueries({ queryKey: ["session-reviews", session.id] }));
+		expect(await screen.findByRole("button", { name: "Accept delivery" })).toBeEnabled();
 	});
 });
