@@ -3974,10 +3974,12 @@ type TriggerReviewRequest struct {
 	EnableAutoInject   bool `json:"enableAutoInject,omitempty" description:"Turn on the worker session's review auto-inject once a pass has started, so the reviewer's PR review comments reach the worker."`
 }
 
+// LocalReviewResponse carries the current pinned local delivery and review facts.
 type LocalReviewResponse struct {
 	LocalReview *domain.LocalReviewSummary `json:"localReview"`
 }
 
+// LocalReviewDecisionRequest targets an explicit delivery for acceptance or rework.
 type LocalReviewDecisionRequest struct {
 	DeliveryID     string `json:"deliveryId"`
 	Decision       string `json:"decision" enum:"accepted,changes_requested,needs_input"`
@@ -3985,14 +3987,17 @@ type LocalReviewDecisionRequest struct {
 	ActorSessionID string `json:"actorSessionId,omitempty"`
 }
 
+// LocalReviewDecisionResponse returns the recorded decision, including rework escalation.
 type LocalReviewDecisionResponse struct {
 	Decision string `json:"decision" enum:"accepted,changes_requested,needs_input"`
 }
 
+// LocalReviewAutoRequest changes the worker's local review automation setting.
 type LocalReviewAutoRequest struct {
 	Enabled *bool `json:"enabled"`
 }
 
+// LocalReviewAutoResponse confirms the worker's local review automation setting.
 type LocalReviewAutoResponse struct {
 	Enabled bool `json:"enabled"`
 }

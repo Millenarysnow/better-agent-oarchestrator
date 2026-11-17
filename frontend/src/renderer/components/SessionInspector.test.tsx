@@ -4435,6 +4435,15 @@ describe("SessionInspector summary reviews", () => {
     );
   });
 
+  it("opens local review controls for a local worker without a PR", async () => {
+    mockCommonGets();
+    renderWithQuery(<SessionInspector session={session([], { projectKind: "single_repo" })} view="reviews" />);
+    expect(screen.getByRole("tab", { name: "Reviews" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("heading", { name: "Local delivery review" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Automatically review this worker’s local deliveries" })).toBeInTheDocument();
+    expect(screen.getByText(/Submit a complete done report/)).toBeInTheDocument();
+  });
+
   it("hides Reviews and the review preference when the session has no PR", async () => {
     mockCommonGets();
     renderWithQuery(<SessionInspector session={session([], { outputType: "pr" })} />);

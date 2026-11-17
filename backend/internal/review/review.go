@@ -450,8 +450,8 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 			continue
 		}
 		if previousTargetRun == nil || run.CreatedAt.After(previousTargetRun.CreatedAt) || (run.CreatedAt.Equal(previousTargetRun.CreatedAt) && run.ID > previousTargetRun.ID) {
-			copy := run
-			previousTargetRun = &copy
+			snapshot := run
+			previousTargetRun = &snapshot
 		}
 	}
 	if previousTargetRun != nil && previousTargetRun.TargetKind == "local" {

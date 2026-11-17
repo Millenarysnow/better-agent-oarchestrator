@@ -104,6 +104,7 @@ func (s *Service) PrepareLocalCompletion(ctx context.Context, report domain.Repo
 	return &d, nil
 }
 
+// Local returns the current delivery, review consensus and live Git validity.
 func (s *Service) Local(ctx context.Context, id domain.SessionID) (*domain.LocalReviewSummary, error) {
 	st, ok := s.store.(localStore)
 	if !ok {
@@ -181,6 +182,7 @@ func (s *Service) triggerLocal(ctx context.Context, id domain.SessionID, req Tri
 	return TriggerOutcome{TriggerResult: result}, err
 }
 
+// TriggerLocalAuto reviews a current, unreviewed completion when automation is due.
 func (s *Service) TriggerLocalAuto(ctx context.Context, id domain.SessionID) (reviewcore.TriggerResult, error) {
 	x, err := s.Local(ctx, id)
 	if err != nil || x == nil || x.Stale || x.Delivery.InputError != "" || x.Delivery.Decision != "" || x.Status != "" {
@@ -190,6 +192,7 @@ func (s *Service) TriggerLocalAuto(ctx context.Context, id domain.SessionID) (re
 	return result.TriggerResult, err
 }
 
+// SetLocalAuto changes only this worker's local automatic review preference.
 func (s *Service) SetLocalAuto(ctx context.Context, id domain.SessionID, enabled bool) error {
 	st, ok := s.store.(localStore)
 	if !ok {
@@ -212,6 +215,7 @@ func (s *Service) SetLocalAuto(ctx context.Context, id domain.SessionID, enabled
 	return err
 }
 
+// DecideLocal validates the actor and pinned version before recording acceptance.
 func (s *Service) DecideLocal(ctx context.Context, id domain.SessionID, deliveryID, decision, note string, actor domain.SessionID) (string, error) {
 	if decision != "accepted" && decision != "changes_requested" && decision != "needs_input" {
 		return "", fmt.Errorf("%w: unknown local acceptance decision", ErrInvalid)
@@ -264,10 +268,13 @@ func (s *Service) DecideLocal(ctx context.Context, id domain.SessionID, delivery
 	if decision != "accepted" && strings.TrimSpace(note) == "" {
 		return "", fmt.Errorf("%w: a return or input decision requires a reason", ErrInvalid)
 	}
-	st := s.store.(localStore)
+	st, supported := s.store.(localStore)
+	if !supported {
+		return "", fmt.Errorf("%w: local review is unavailable", ErrInvalid)
+	}
 	result, err := st.DecideLocalReview(ctx, id, deliveryID, decision, note, actor, s.clock())
 	if err != nil {
-		return "", fmt.Errorf("%w: %s", ErrConflict, err)
+		return "", fmt.Errorf("%w: %w", ErrConflict, err)
 	}
 	if s.localWake != nil {
 		s.localWake()
@@ -298,6 +305,7 @@ func (s *Service) queueLocalResult(ctx context.Context, run domain.ReviewRun) er
 	return nil
 }
 
+// WithLocalReviewWake connects the durable result outbox to report delivery.
 func (s *Service) WithLocalReviewWake(wake func()) { s.localWake = wake }
 
 // ReconcileLocalFeedback repairs the result/outbox boundary after a daemon crash,

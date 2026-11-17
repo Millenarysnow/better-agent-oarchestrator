@@ -360,6 +360,8 @@ function reviewsTabVisible(session: WorkspaceSession | undefined): boolean {
 	// Cloud PR facts are queried directly by CloudReviewsSection instead of
 	// piggybacking on the local daemon workspace projection.
 	if (session.cloud) return true;
+	if (session.kind !== "orchestrator" && sortedPRs(session).length === 0 &&
+		(session.projectKind === "single_repo" || session.localReview !== undefined || session.autoLocalReviewEnabled === true)) return true;
 	return sortedPRs(session).some((pr) => pr.state === "open" || pr.state === "draft");
 }
 

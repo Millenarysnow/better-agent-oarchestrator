@@ -380,8 +380,8 @@ function scratchSupportedConfig(config: ProjectConfig): ProjectConfig {
 		defaultBranch: _defaultBranch,
 		reviewers: _reviewers,
 		autoReview: _legacyAutoReview,
-		autoLocalReview:_autoLocalReview,
-		workersRequestLocalReview:_workersRequestLocalReview,
+		autoLocalReview: _autoLocalReview,
+		workersRequestLocalReview: _workersRequestLocalReview,
 		workersRequestReview: _workersRequestReview,
 		trackerIntake: _trackerIntake,
 		...supported

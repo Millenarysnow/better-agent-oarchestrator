@@ -1,9 +1,10 @@
 package contract_test
 
 import (
-	"github.com/aoagents/agent-orchestrator/backend/pkg/contract"
 	"testing"
 	"time"
+
+	"github.com/aoagents/agent-orchestrator/backend/pkg/contract"
 )
 
 func TestLocalDeliveryRequiresExplicitAcceptance(t *testing.T) {

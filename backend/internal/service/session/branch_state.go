@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -156,7 +157,7 @@ func (s *Service) reconcileBranchTarget(ctx context.Context, writer branchStateW
 	if target.localDelivery {
 		status, err := gitWorkspaceOutput(ctx, rec.Metadata.WorkspacePath, "status", "--porcelain", "--untracked-files=normal")
 		if err != nil {
-			return nil
+			return fmt.Errorf("observe local delivery workspace %s: %w", rec.ID, err)
 		}
 		dirty = strings.TrimSpace(status) != ""
 		fingerprint += " " + strconv.FormatBool(dirty)

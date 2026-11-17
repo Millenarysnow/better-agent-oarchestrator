@@ -3,6 +3,8 @@ package review
 import (
 	"context"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
@@ -24,6 +26,31 @@ func TestLocalReviewLaunchesWithoutPRAndPinsVersions(t *testing.T) {
 	prompt, system := reviewTexts(launcher.gotSpec)
 	if strings.Contains(prompt, "gh api") || !strings.Contains(prompt, d.BaseSHA) || !strings.Contains(prompt, d.TargetSHA) || !strings.Contains(system, "must not edit") {
 		t.Fatal("local review must pin both revisions and submit without a provider")
+	}
+}
+
+func TestLocalConcurrentRequestsCoalesce(t *testing.T) {
+	worker := liveWorker()
+	store := &fakeStore{}
+	launcher := &fakeLauncher{handle: "local-review"}
+	engine := newEngineForTest(store, fakeSessions{rec: worker, ok: true}, fakePRs{}, fakeProjects{}, launcher)
+	d := domain.LocalDelivery{ID: "done", SessionID: worker.ID, BaseSHA: "base", TargetSHA: "head"}
+	var group sync.WaitGroup
+	var created atomic.Int32
+	for range 2 {
+		group.Go(func() {
+			result, err := engine.TriggerWithOptions(context.Background(), worker.ID, TriggerOptions{LocalTarget: &d})
+			if err != nil {
+				t.Errorf("trigger: %v", err)
+			}
+			if result.Created {
+				created.Add(1)
+			}
+		})
+	}
+	group.Wait()
+	if created.Load() != 1 || len(store.runs) != 1 {
+		t.Fatalf("created=%d runs=%+v", created.Load(), store.runs)
 	}
 }
 

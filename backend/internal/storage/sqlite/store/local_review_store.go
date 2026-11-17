@@ -11,6 +11,7 @@ import (
 	"github.com/aoagents/agent-orchestrator/backend/internal/storage/sqlite/gen"
 )
 
+// CreateLocalDelivery inserts an already captured report revision idempotently.
 func (s *Store) CreateLocalDelivery(ctx context.Context, d domain.LocalDelivery) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -30,6 +31,7 @@ func localDeliveryFromRow(d gen.LocalDelivery) domain.LocalDelivery {
 	return out
 }
 
+// GetLocalDelivery reads the worker's latest completion revision.
 func (s *Store) GetLocalDelivery(ctx context.Context, id domain.SessionID) (domain.LocalDelivery, bool, error) {
 	row, err := s.qr.GetLocalDelivery(ctx, string(id))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -91,6 +93,7 @@ func (s *Store) ListLocalReviewFactsForSessions(ctx context.Context, ids []domai
 	return out, nil
 }
 
+// SetSessionAutoLocalReview persists this session's local automation choice.
 func (s *Store) SetSessionAutoLocalReview(ctx context.Context, id domain.SessionID, enabled bool, now time.Time) (bool, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -107,6 +110,7 @@ func (s *Store) QueueLocalReviewResult(ctx context.Context, run domain.ReviewRun
 	return err
 }
 
+// DecideLocalReview fences running reviews, limits rework and queues the decision atomically.
 func (s *Store) DecideLocalReview(ctx context.Context, id domain.SessionID, deliveryID, decision, note string, actor domain.SessionID, now time.Time) (string, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -146,6 +150,7 @@ func (s *Store) DecideLocalReview(ctx context.Context, id domain.SessionID, deli
 	return decision, err
 }
 
+// UndeliveredLocalReviewRuns finds settled results missing their durable feedback report.
 func (s *Store) UndeliveredLocalReviewRuns(ctx context.Context) ([]domain.ReviewRun, error) {
 	rows, err := s.qr.UndeliveredLocalReviewRuns(ctx)
 	if err != nil {

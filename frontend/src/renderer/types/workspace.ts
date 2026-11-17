@@ -121,6 +121,7 @@ export type WorkspaceSession = {
 	/** Opaque controller generation; changes even when a restarted PTY reuses its handle. */
 	terminalGeneration?: string;
 	workspaceId: string;
+	projectKind?: ProjectKind;
 	workspaceName: string;
 	title: string;
 	/** Raw issue/task identifier from the daemon. Intake ids are provider-prefixed. */
