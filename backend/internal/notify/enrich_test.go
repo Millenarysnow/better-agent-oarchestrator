@@ -1,11 +1,53 @@
 package notify
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/aoagents/agent-orchestrator/backend/internal/domain"
 )
+
+func TestEnrichLocalReviewWithoutPR(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		typ   domain.NotificationType
+		title string
+		body  string
+	}{
+		{domain.NotificationReviewCompleted, "Local review complete for Checkout flow", "The local delivery review passed. Explicit acceptance is still required."},
+		{domain.NotificationReviewChangesRequested, "Local review found changes for Checkout flow", "The local delivery review found changes to address. The coordinator or user decides whether to return it."},
+	} {
+		t.Run(string(tc.typ), func(t *testing.T) {
+			rec, err := enrich(Intent{
+				Type: tc.typ, SessionID: "sess-1", ProjectID: "proj-1",
+				ReviewTargetKind: "local", SessionDisplayName: "Checkout flow",
+				CreatedAt: time.Now(), SourceKey: "review_run:run-1",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rec.PRURL != "" || rec.Title != tc.title || rec.Body != tc.body || rec.SourceKey != "review_run:run-1" {
+				t.Fatalf("local review notification = %+v", rec)
+			}
+		})
+	}
+}
+
+func TestEnrichMissingPRStillRejectsPRNotifications(t *testing.T) {
+	t.Parallel()
+	for _, intent := range []Intent{
+		{Type: domain.NotificationReviewCompleted},
+		{Type: domain.NotificationReviewChangesRequested},
+		{Type: domain.NotificationReadyToMerge, ReviewTargetKind: "local"},
+		{Type: domain.NotificationPRMerged, ReviewTargetKind: "local"},
+	} {
+		intent.SessionID, intent.CreatedAt = "sess-1", time.Now()
+		if _, err := enrich(intent); !errors.Is(err, domain.ErrInvalidNotificationRecord) {
+			t.Fatalf("missing PR accepted for %+v: %v", intent, err)
+		}
+	}
+}
 
 func TestEnrichReadyToMergePrioritizesPRContext(t *testing.T) {
 	t.Parallel()

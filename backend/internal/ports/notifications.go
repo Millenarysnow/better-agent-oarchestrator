@@ -26,6 +26,10 @@ type NotificationIntent struct {
 	PRTargetBranch     string
 	Provider           string
 	Repo               string
+
+	// ReviewTargetKind distinguishes local deliveries from PR reviews. Empty
+	// retains the existing PR notification contract.
+	ReviewTargetKind string
 }
 
 // NotificationResolution is the lifecycle-to-notification-producer contract for

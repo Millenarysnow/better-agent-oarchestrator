@@ -995,6 +995,7 @@ func (s *Service) emitReviewNotification(ctx context.Context, run domain.ReviewR
 	intent := ports.NotificationIntent{
 		SessionID: session.ID, ProjectID: session.ProjectID, PRURL: run.PRURL,
 		SessionDisplayName: session.DisplayName, CreatedAt: s.clock(), SourceKey: "review_run:" + run.ID,
+		ReviewTargetKind: run.TargetKind,
 	}
 	if run.Verdict == domain.VerdictChangesRequested {
 		intent.Type = domain.NotificationReviewChangesRequested

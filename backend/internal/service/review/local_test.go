@@ -49,7 +49,8 @@ func TestLocalCompletionPinsVersionAndRejectsStaleAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc := New(nil, store)
+	sink := &fakeNotificationSink{}
+	svc := New(nil, store, WithNotificationSink(sink))
 	reports := reportsvc.New(reportsvc.Deps{Store: store, Completion: svc.PrepareLocalCompletion, Now: func() time.Time { return now }, NewID: func() string { return "done-1" }})
 	report, err := reports.Create(ctx, reportsvc.CreateInput{SessionID: worker.ID, State: domain.ReportDone, Note: "complete, tested"})
 	if err != nil {
@@ -74,6 +75,9 @@ func TestLocalCompletionPinsVersionAndRejectsStaleAcceptance(t *testing.T) {
 	}
 	if _, err := svc.Submit(ctx, worker.ID, run.ID, domain.VerdictApproved, "No blocking findings; editor smoke test remains manual", ""); err != nil {
 		t.Fatal(err)
+	}
+	if len(sink.intents) != 1 || sink.intents[0].ReviewTargetKind != "local" || sink.intents[0].PRURL != "" {
+		t.Fatalf("local notification lost its target: %+v", sink.intents)
 	}
 	if _, err := svc.DecideLocal(ctx, worker.ID, report.ID, "accepted", "evidence checked", ""); err != nil {
 		t.Fatal(err)
