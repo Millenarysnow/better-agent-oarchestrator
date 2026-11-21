@@ -7,8 +7,10 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
+const codeBuddyMigrationVersion int64 = 20261115044553091
+
 func TestCodeBuddyMigrationPreservesExistingHarnessesAndGuardsRollback(t *testing.T) {
-	const previous = 20261110172911382
+	const previous = codeBuddyMigrationVersion - 1
 	db := openMigratedDatabaseCopy(t, previous)
 	var before string
 	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE name = 'sessions'`).Scan(&before); err != nil {
@@ -17,7 +19,7 @@ func TestCodeBuddyMigrationPreservesExistingHarnessesAndGuardsRollback(t *testin
 	mustExec(t, db, `INSERT INTO projects (id, path, registered_at) VALUES ('cb-project', '/tmp/cb-project', CURRENT_TIMESTAMP)`)
 	insert := `INSERT INTO sessions (id, project_id, num, harness, created_at, updated_at, activity_last_at) VALUES (?, 'cb-project', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
 	mustExec(t, db, insert, "existing-opencode", 1, "opencode-v2")
-	upTo(t, db, 20261115044553091)
+	upTo(t, db, codeBuddyMigrationVersion)
 	mustExec(t, db, insert, "cb-session", 2, "codebuddy")
 	if _, err := db.Exec(insert, "unknown-session", 3, "unknown-agent"); err == nil {
 		t.Fatal("unknown harness bypassed the CHECK constraint")
@@ -44,11 +46,11 @@ func TestCodeBuddyMigrationPreservesExistingHarnessesAndGuardsRollback(t *testin
 }
 
 func TestCodeBuddyMigrationSurvivesLegacyHarnessRepair(t *testing.T) {
-	db := openMigratedDatabaseCopy(t, 20261110172911382)
+	db := openMigratedDatabaseCopy(t, codeBuddyMigrationVersion-1)
 	mustExec(t, db, `PRAGMA writable_schema = ON`)
 	mustExec(t, db, `UPDATE sqlite_master SET sql = replace(sql, '''command-code'', ', '') WHERE type = 'table' AND name = 'sessions'`)
 	mustExec(t, db, `PRAGMA writable_schema = RESET`)
-	upTo(t, db, 20261115044553091)
+	upTo(t, db, codeBuddyMigrationVersion)
 	if err := reconcileHarnessConstraint(db); err != nil {
 		t.Fatal(err)
 	}
@@ -58,5 +60,22 @@ func TestCodeBuddyMigrationSurvivesLegacyHarnessRepair(t *testing.T) {
 	}
 	if !strings.Contains(schema, "'codebuddy'") || !strings.Contains(schema, "'command-code'") {
 		t.Fatalf("legacy repair lost a harness: %s", schema)
+	}
+}
+
+func TestCodeBuddyMigrationUpgradesExistingForkDatabase(t *testing.T) {
+	db := openMigratedDatabaseCopy(t, codeBuddyMigrationVersion)
+	mustExec(t, db, `INSERT INTO projects (id, path, registered_at) VALUES ('fork-project', '/tmp/fork-project', CURRENT_TIMESTAMP)`)
+	insert := `INSERT INTO sessions (id, project_id, num, harness, created_at, updated_at, activity_last_at) VALUES (?, 'fork-project', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+	mustExec(t, db, insert, "old-codebuddy", 1, "codebuddy")
+	if err := migrate(db); err != nil {
+		t.Fatalf("upgrade existing CodeBuddy database: %v", err)
+	}
+	var harness string
+	if err := db.QueryRow(`SELECT harness FROM sessions WHERE id = 'old-codebuddy'`).Scan(&harness); err != nil || harness != "codebuddy" {
+		t.Fatalf("existing session harness = %q, err = %v", harness, err)
+	}
+	for i, harness := range []string{"codebuddy", "stakpak", "docker-agent", "minimax-code", "open-interpreter", "tau", "mastra-code"} {
+		mustExec(t, db, insert, harness, i+2, harness)
 	}
 }

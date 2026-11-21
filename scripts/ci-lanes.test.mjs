@@ -63,6 +63,14 @@ test('the shared app update policy validates Go and the full frontend suite', ()
   assert.equal(pickLanes(pr([policy, 'frontend/src/main/a.ts'])).vitest, 'all');
 });
 
+test('the desktop harness marks and the daemon harness list reach the mobile parity test', () => {
+  assert.ok(pickLanes(pr(['frontend/src/renderer/assets/agents/codex.svg'])).lanes.includes('mobile'));
+  assert.ok(pickLanes(pr(['frontend/src/renderer/components/AgentAvatar.tsx'])).lanes.includes('mobile'));
+  assert.ok(pickLanes(pr(['backend/internal/domain/harness.go'])).lanes.includes('mobile'));
+  assert.ok(!pickLanes(pr(['frontend/src/renderer/components/AgentAvatarStack.tsx'])).lanes.includes('mobile'));
+  assert.ok(!pickLanes(pr(['backend/internal/domain/session.go'])).lanes.includes('mobile'));
+});
+
 test('the renderer typechecks against cloud-client types', () => {
   assert.deepEqual(pickLanes(pr(['packages/cloud-client/src/types.ts'])).lanes, ['frontend', 'boundary', 'cloud']);
   assert.deepEqual(pickLanes(pr(['contracts/cloud/openapi.yaml'])).lanes, ['cloud']);
