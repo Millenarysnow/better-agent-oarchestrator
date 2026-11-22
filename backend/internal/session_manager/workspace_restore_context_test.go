@@ -26,7 +26,7 @@ func (a *restoreContextAgent) PrepareRuntimeLaunch(_ context.Context, cfg ports.
 func TestFreshWorkspaceHooksHaveNoNativeRestoreContext(t *testing.T) {
 	a := &restoreContextAgent{}
 	m := New(Deps{DataDir: t.TempDir()})
-	if err := m.prepareWorkspace(context.Background(), a, "fresh", t.TempDir(), "", "", ports.AgentConfig{}, map[string]string{}); err != nil {
+	if err := m.prepareWorkspace(context.Background(), a, "fresh", t.TempDir(), "", "", ports.AgentConfig{}, map[string]string{}, domain.SessionModeTUI); err != nil {
 		t.Fatal(err)
 	}
 	if err := m.prepareRuntimeLaunch(context.Background(), a, "fresh", t.TempDir(), "", "", ports.AgentConfig{}, map[string]string{}, workspaceRestoreContext{}); err != nil {

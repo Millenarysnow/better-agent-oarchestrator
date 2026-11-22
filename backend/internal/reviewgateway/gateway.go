@@ -28,6 +28,9 @@ var (
 
 // Task is one immutable review capability.
 type Task struct {
+	TargetKind     string `json:"targetKind,omitempty"`
+	BaseSHA        string `json:"baseSha,omitempty"`
+	DeliveryID     string `json:"deliveryId,omitempty"`
 	RunID          string `json:"runId"`
 	PRURL          string `json:"prUrl"`
 	TargetSHA      string `json:"targetSha"`
@@ -171,8 +174,17 @@ func validateManifest(manifest *Manifest) error {
 		if !safeID.MatchString(task.RunID) || seen[task.RunID] || !commitSHA.MatchString(task.TargetSHA) {
 			return errors.New("review gateway: invalid or duplicate task identity")
 		}
-		if _, _, err := parsePRURL(task.PRURL); err != nil {
-			return err
+		switch task.TargetKind {
+		case "local":
+			if task.PRURL != "" || !commitSHA.MatchString(task.BaseSHA) || !safeID.MatchString(task.DeliveryID) {
+				return errors.New("review gateway: invalid pinned local delivery")
+			}
+		case "", "pr":
+			if _, _, err := parsePRURL(task.PRURL); err != nil {
+				return err
+			}
+		default:
+			return errors.New("review gateway: unsupported review target")
 		}
 		prompt, err := filepath.Abs(task.TaskPromptFile)
 		if err != nil || !pathWithin(manifest.TaskPromptRoot, prompt) {

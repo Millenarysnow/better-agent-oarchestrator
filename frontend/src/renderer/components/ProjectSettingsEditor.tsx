@@ -30,6 +30,8 @@ export type ProjectSettingsDraft = {
 	orchestratorPermissions: string;
 	reviewerPermissions: string;
 	autoReview: boolean;
+	autoLocalReview?: boolean;
+	workersRequestLocalReview?: boolean;
 	/** Local-only: workers may ask AO to review their own PRs. */
 	workersRequestReview?: boolean;
 	/** Cloud-only: agent commits name the AO GitHub App as a co-author. */
@@ -51,6 +53,7 @@ export type ProjectAgentPickerProps = {
 };
 type Capabilities = {
 	workflow: boolean;
+	localReview?: boolean;
 	sessionPrefix: boolean;
 	intake: boolean;
 	reviewer: boolean;
@@ -187,7 +190,11 @@ export function ProjectSettingsEditor({ initialValues, section, capabilities, de
 						{capabilities.sessionPrefix && <ProjectSettingsInputRow id="sessionPrefix" label={t("settings.project.sessionPrefix")} editLabel={t("settings.field.edit", { label: t("settings.project.sessionPrefix") })} editIcon={<Pencil className="settings-inline-edit-icon" aria-hidden="true" />} value={draft.sessionPrefix} placeholder="ao" onChange={(sessionPrefix) => patch({ sessionPrefix })} />}
 					</ProjectSettingsSection>
 					{capabilities.intake && <ProjectSettingsSection title={t("settings.project.issues")} grouped><IntakeFields variant="settings" description={intakeDescription} form={intake} onChange={(values) => patch({ intakeEnabled: values.enabled ?? draft.intakeEnabled, intakeRepo: values.repo ?? draft.intakeRepo, intakeAssignee: values.assignee ?? draft.intakeAssignee })} repoPreview={{ value: draft.intakeRepo.trim() || deriveRepoPath(repository ?? ""), host: deriveRepoHost(repository ?? "") }} /></ProjectSettingsSection>}
-					<ProjectSettingsSection title={t("settings.project.pullRequests")} grouped>
+					{capabilities.localReview && <ProjectSettingsSection title={t("settings.project.localReview")} grouped>
+                            <ProjectAutoReviewToggle checked={draft.autoLocalReview ?? false} onCheckedChange={(autoLocalReview) => patch({autoLocalReview})} label={t("settings.project.autoLocalReview")} description={t("settings.project.autoLocalReviewDescription")} id="project-auto-local-review" />
+                            <ProjectAutoReviewToggle checked={draft.workersRequestLocalReview ?? false} onCheckedChange={(workersRequestLocalReview) => patch({workersRequestLocalReview})} label={t("settings.project.workersRequestLocalReview")} description={t("settings.project.workersRequestLocalReviewDescription")} id="project-workers-request-local-review" />
+                        </ProjectSettingsSection>}
+                        <ProjectSettingsSection title={t("settings.project.pullRequests")} grouped>
 						<ProjectAutoReviewToggle description={autoReviewDescription} checked={draft.autoReview} onCheckedChange={(autoReview) => patch({ autoReview })} />
 						{capabilities.workersRequestReview && <ProjectWorkersRequestReviewToggle checked={draft.workersRequestReview ?? false} onCheckedChange={(workersRequestReview) => patch({ workersRequestReview })} />}
 						{capabilities.coAuthorCommits && <ProjectCoAuthorCommitsToggle checked={draft.coAuthorCommits ?? true} onCheckedChange={(coAuthorCommits) => patch({ coAuthorCommits })} />}

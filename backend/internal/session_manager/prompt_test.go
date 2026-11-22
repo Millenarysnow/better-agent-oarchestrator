@@ -521,3 +521,14 @@ func TestBuildTaskPrompt_StackedTaskNamesItsBase(t *testing.T) {
 		t.Fatalf("empty prompt = %q", got)
 	}
 }
+
+func TestWorkersRequestLocalReviewSettingIsIndependentOfPRReview(t *testing.T) {
+	const local = "run ao review trigger --local yourself"
+	const pr = "Once your PR is pushed"
+	for _, tc := range []struct{ local, pr bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
+		prompt := workerNativeReviewPrompt(promptProject{WorkersRequestLocalReview: tc.local, WorkersRequestReview: tc.pr}, true)
+		if strings.Contains(prompt, local) != tc.local || strings.Contains(prompt, pr) != tc.pr {
+			t.Fatalf("worker request flags %+v not reflected independently in prompt: %s", tc, prompt)
+		}
+	}
+}

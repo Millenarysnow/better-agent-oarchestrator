@@ -81,6 +81,10 @@ type ProjectConfig struct {
 	// new session at spawn time. Users can still override the per-session toggle
 	// after spawn.
 	AutoReview bool `json:"autoReview,omitempty"`
+	// Local review never requires a PR or provider credentials. Each switch is
+	// independent of the corresponding PR policy and defaults off.
+	AutoLocalReview           bool `json:"autoLocalReview,omitempty"`
+	WorkersRequestLocalReview bool `json:"workersRequestLocalReview,omitempty"`
 
 	// WorkersRequestReview changes what worker sessions are told about AO's
 	// native reviewer. When set, a worker requests an AO review of its own PR

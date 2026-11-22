@@ -965,6 +965,18 @@ describe("SessionsBoard", () => {
 		);
 	});
 
+	it.each(["needs_review", "validating", "ready"] as const)("preserves the daemon's local delivery lane %s without runtime signals", (column) => {
+		workspaceQueryMock.mockReturnValue({
+			data: [workspaceWithSessions([boardSession({
+				id: "local-delivery", title: "local-delivery-task", status: "no_signal", displayStatus: "Approved", kanbanColumn: column,
+				localReview: { delivery: { id: "done", sessionId: "local-delivery", baseSha: "base", targetSha: "head", targetBranch: "main", createdAt: "2026-11-17T00:00:00Z" }, stale: false, reworkCount: 0 },
+			})])], isError: false, isSuccess: true,
+		});
+		renderBoard("p1");
+		const card = screen.getByText("local-delivery-task").closest('[data-testid="board-session-card"]') as HTMLElement;
+		expect(within(card).getByTestId("session-status").closest("[data-kanban-column]")).toHaveAttribute("data-kanban-column", column);
+	});
+
 	it("places a no-signal display status alongside idle even with a review column", () => {
 		workspaceQueryMock.mockReturnValue({
 			data: [workspaceWithSessions([

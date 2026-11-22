@@ -257,9 +257,9 @@ export function AgentModelField({
 	);
 }
 
-export function ProjectAutoReviewToggle({ checked, onCheckedChange, description }: { checked: boolean; onCheckedChange: (checked: boolean) => void; description?: string }) {
+export function ProjectAutoReviewToggle({ checked, onCheckedChange, description, label, id }: { checked: boolean; onCheckedChange: (checked: boolean) => void; description?: string; label?: string; id?: string }) {
 	const { t } = useTranslation();
-	return <ProjectToggleRow id="project-auto-review" label={t("settings.project.autoReviewToggle")} description={description ?? t("settings.project.autoReviewDescription")} checked={checked} onCheckedChange={onCheckedChange} />;
+	return <ProjectToggleRow id={id ?? "project-auto-review"} label={label ?? t("settings.project.autoReviewToggle")} description={description ?? t("settings.project.autoReviewDescription")} checked={checked} onCheckedChange={onCheckedChange} />;
 }
 
 export function ProjectWorkersRequestReviewToggle({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {

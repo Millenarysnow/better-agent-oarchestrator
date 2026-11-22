@@ -905,6 +905,18 @@ describe("ProjectSettingsForm", () => {
 		expect(request?.body.config.autoReview).toBe(false);
 	});
 
+    it("saves both local review switches independently of the PR switches", async () => {
+        mockProject({ id: "proj-1", name: "Local", kind: "single_repo", path: "/repo/local", repo: "", defaultBranch: "main", config: { worker: { agent: "codex" }, orchestrator: { agent: "claude-code" }, autoReview: true, workersRequestReview: true } });
+        renderSettings("proj-1", undefined, "general");
+        const auto = await screen.findByRole("switch", { name: "Automatically review local deliveries" });
+        const worker = screen.getByRole("switch", { name: "Workers request a local review" });
+        expect(auto).not.toBeChecked(); expect(worker).not.toBeChecked();
+        await userEvent.click(auto);
+        await waitFor(() => expect(putMock).toHaveBeenCalledWith("/api/v1/projects/{id}", expect.objectContaining({ body: expect.objectContaining({ config: expect.objectContaining({ autoLocalReview: true, autoReview: true, workersRequestReview: true }) }) })));
+        await userEvent.click(worker);
+        await waitFor(() => expect(putMock).toHaveBeenLastCalledWith("/api/v1/projects/{id}", expect.objectContaining({ body: expect.objectContaining({ config: expect.objectContaining({ autoLocalReview: true, workersRequestLocalReview: true, autoReview: true, workersRequestReview: true }) }) })));
+    });
+
 	it("loads and saves whether workers request an AO review", async () => {
 		mockProject({
 			id: "proj-1",

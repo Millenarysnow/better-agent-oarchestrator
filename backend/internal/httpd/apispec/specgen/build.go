@@ -672,13 +672,20 @@ var schemaNames = map[string]string{ //nolint:gosec // Public OpenAPI type names
 	"ControllersSubmitReviewItem":      "SubmitReviewItem",
 	"ControllersSubmitReviewInput":     "SubmitReviewInput",
 	// domain review entities
-	"DomainReviewRun":                  "ReviewRun",
-	"ReviewPRReviewState":              "PRReviewState",
-	"SessionimportCandidate":           "SessionImportCandidate",
-	"SessionimportPreview":             "SessionImportPreview",
-	"SessionimportResult":              "SessionImportResult",
-	"ControllersSessionImportRequest":  "SessionImportRequest",
-	"ControllersSessionImportResponse": "SessionImportResponse",
+	"DomainLocalDelivery":                    "LocalDelivery",
+	"DomainLocalReviewSummary":               "LocalReviewSummary",
+	"ControllersLocalReviewResponse":         "LocalReviewResponse",
+	"ControllersLocalReviewDecisionRequest":  "LocalReviewDecisionRequest",
+	"ControllersLocalReviewDecisionResponse": "LocalReviewDecisionResponse",
+	"ControllersLocalReviewAutoRequest":      "LocalReviewAutoRequest",
+	"ControllersLocalReviewAutoResponse":     "LocalReviewAutoResponse",
+	"DomainReviewRun":                        "ReviewRun",
+	"ReviewPRReviewState":                    "PRReviewState",
+	"SessionimportCandidate":                 "SessionImportCandidate",
+	"SessionimportPreview":                   "SessionImportPreview",
+	"SessionimportResult":                    "SessionImportResult",
+	"ControllersSessionImportRequest":        "SessionImportRequest",
+	"ControllersSessionImportResponse":       "SessionImportResponse",
 	// httpd/controllers: import wire envelopes
 	"ControllersImportStatusResponse": "ImportStatusResponse",
 	"ControllersImportRunResponse":    "ImportRunResponse",
@@ -3083,6 +3090,10 @@ func pushOperations() []operation {
 
 func reviewOperations() []operation {
 	return []operation{
+		{method: http.MethodGet, path: "/api/v1/sessions/{sessionId}/reviews/local", id: "getLocalReview", tag: "reviews", summary: "Read the current local delivery", pathParams: []any{controllers.SessionIDParam{}}, resps: []respUnit{{http.StatusOK, controllers.LocalReviewResponse{}}, {http.StatusUnprocessableEntity, envelope.APIError{}}}},
+		{method: http.MethodPost, path: "/api/v1/sessions/{sessionId}/reviews/local/decision", id: "decideLocalReview", tag: "reviews", summary: "Accept or return the current local delivery", pathParams: []any{controllers.SessionIDParam{}}, reqBody: controllers.LocalReviewDecisionRequest{}, resps: []respUnit{{http.StatusOK, controllers.LocalReviewDecisionResponse{}}, {http.StatusConflict, envelope.APIError{}}, {http.StatusUnprocessableEntity, envelope.APIError{}}}},
+		{method: http.MethodPut, path: "/api/v1/sessions/{sessionId}/reviews/local/auto", id: "setLocalReviewAuto", tag: "reviews", summary: "Set session local review automation", pathParams: []any{controllers.SessionIDParam{}}, reqBody: controllers.LocalReviewAutoRequest{}, resps: []respUnit{{http.StatusOK, controllers.LocalReviewAutoResponse{}}, {http.StatusUnprocessableEntity, envelope.APIError{}}}},
+
 		{
 			method: http.MethodGet, path: "/api/v1/sessions/{sessionId}/reviews", id: "listReviews", tag: "reviews",
 			summary:    "List a worker's code-review runs",

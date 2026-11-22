@@ -7,6 +7,23 @@ import (
 	"testing"
 )
 
+func TestLocalManifestRequiresPinnedDeliveryWithoutProvider(t *testing.T) {
+	manifest := testManifest(t)
+	task := &manifest.Tasks[0]
+	task.TargetKind, task.PRURL, task.BaseSHA, task.DeliveryID = "local", "", strings.Repeat("a", 40), "report-1"
+	if err := validateManifest(&manifest); err != nil {
+		t.Fatal(err)
+	}
+	task.PRURL = "https://github.com/o/r/pull/1"
+	if err := validateManifest(&manifest); err == nil {
+		t.Fatal("local target authorized a provider")
+	}
+	task.PRURL, task.BaseSHA = "", "--help"
+	if err := validateManifest(&manifest); err == nil {
+		t.Fatal("local target accepted an unpinned base")
+	}
+}
+
 func testManifest(t *testing.T) Manifest {
 	t.Helper()
 	root := t.TempDir()

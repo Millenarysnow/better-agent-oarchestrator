@@ -29,6 +29,9 @@ const (
 
 // reviewRun mirrors the daemon's domain.ReviewRun for the CLI client.
 type reviewRun struct {
+	TargetKind     string     `json:"targetKind"`
+	BaseSHA        string     `json:"baseSha,omitempty"`
+	DeliveryID     string     `json:"deliveryId,omitempty"`
 	ID             string     `json:"id"`
 	ReviewID       string     `json:"reviewId"`
 	SessionID      string     `json:"sessionId"`
@@ -53,6 +56,9 @@ type reviewRun struct {
 }
 
 type reviewState struct {
+	TargetKind  string     `json:"targetKind,omitempty"`
+	BaseSHA     string     `json:"baseSha,omitempty"`
+	DeliveryID  string     `json:"deliveryId,omitempty"`
 	PRURL       string     `json:"prUrl"`
 	PRNumber    int        `json:"prNumber"`
 	Title       string     `json:"title"`
@@ -63,6 +69,7 @@ type reviewState struct {
 }
 
 type listReviewsResponse struct {
+	Runs             []reviewRun   `json:"runs"`
 	ReviewerHandleID string        `json:"reviewerHandleId"`
 	Reviews          []reviewState `json:"reviews"`
 }
@@ -79,6 +86,7 @@ type triggerReviewResponse struct {
 
 // triggerReviewRequest mirrors controllers.TriggerReviewRequest.
 type triggerReviewRequest struct {
+	Local              bool               `json:"local,omitempty"`
 	Harness            string             `json:"harness,omitempty"`
 	AgentConfig        *reviewAgentConfig `json:"agentConfig,omitempty"`
 	PRURL              string             `json:"prUrl,omitempty"`
@@ -134,6 +142,7 @@ type reviewSessionOptions struct {
 }
 
 type reviewTriggerOptions struct {
+	local    bool
 	session  string
 	prURL    string
 	harness  string
@@ -166,13 +175,14 @@ type reviewListOptions struct {
 func newReviewCommand(ctx *commandContext) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "review",
-		Short: "Manage Orchestrator code reviews of a worker's PR",
+		Short: "Manage Orchestrator reviews of local deliveries and PRs",
 	}
 	cmd.AddCommand(newReviewListCommand(ctx))
 	cmd.AddCommand(newReviewSubmitCommand(ctx))
 	cmd.AddCommand(newReviewPostGitHubCommand())
 	cmd.AddCommand(newReviewCancelCommand(ctx))
 	cmd.AddCommand(newReviewTriggerCommand(ctx))
+	cmd.AddCommand(newLocalReviewDecisionCommand(ctx))
 	return cmd
 }
 
@@ -402,8 +412,12 @@ func newReviewTriggerCommand(ctx *commandContext) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "trigger [worker-session-id]",
 		Aliases: []string{"execute", "restart"},
-		Short:   "Start an Orchestrator review of a worker's PR (default: this session's PR)",
+		Short:   "Start a review of a worker's PR or --local delivery",
 		Long: `Start an independent Orchestrator reviewer on the worker session's open PR heads.
+
+With --local, review the fixed commits captured by the worker's latest complete
+done report. No PR, push, or provider lookup is required. Local approval awaits
+explicit acceptance with ao review decide; merge and push remain separate.
 
 With no session argument the calling Orchestrator-managed session is reviewed, so a
 worker can request a review of its own PR. Orchestrator fetches the session's
@@ -441,6 +455,7 @@ GitHub approval and does not authorize merging.`,
 	f.StringVar(&opts.harness, "harness", "", "Reviewer agent / --agent for this pass only (e.g. claude-code, codex)")
 	f.StringVar(&opts.model, "model", "", "Reviewer model for this pass only")
 	f.StringVar(&opts.effort, "effort", "", "Reviewer reasoning effort for this pass only")
+	f.BoolVar(&opts.local, "local", false, "Review the current local delivery without a PR")
 	f.BoolVar(&opts.rerun, "rerun", false, "Review heads that already have a review again, or add another reviewer alongside a running one")
 	f.BoolVar(&opts.noInject, "no-inject", false, "Leave the session's review auto-inject setting unchanged")
 	return cmd
@@ -454,12 +469,16 @@ func (c *commandContext) triggerReview(cmd *cobra.Command, args []string, opts r
 	if session == "" {
 		return usageError{errors.New("usage: worker session id is required (positional or --session) outside an Orchestrator-managed session")}
 	}
+	if opts.local && strings.TrimSpace(opts.prURL) != "" {
+		return usageError{errors.New("--local and --pr cannot be combined")}
+	}
 	req := triggerReviewRequest{
+		Local:              opts.local,
 		Harness:            strings.TrimSpace(opts.harness),
 		PRURL:              strings.TrimSpace(opts.prURL),
 		RejectReviewedHead: !opts.rerun,
 		Rerun:              opts.rerun,
-		EnableAutoInject:   !opts.noInject,
+		EnableAutoInject:   !opts.noInject && !opts.local,
 	}
 	if model, effort := strings.TrimSpace(opts.model), strings.TrimSpace(opts.effort); model != "" || effort != "" {
 		req.AgentConfig = &reviewAgentConfig{Model: model, Effort: effort}
@@ -559,7 +578,11 @@ func writeReviewList(cmd *cobra.Command, session string, res listReviewsResponse
 		if review.LatestRun != nil && review.LatestRun.Verdict != "" {
 			verdict = review.LatestRun.Verdict
 		}
-		if _, err := fmt.Fprintf(tw, "#%d\t%s\t%s\t%s\t%s\n", review.PRNumber, review.Status, reviewRunLabel(review.LatestRun), verdict, review.Title); err != nil {
+		target := fmt.Sprintf("#%d", review.PRNumber)
+		if review.TargetKind == "local" {
+			target = "local:" + review.DeliveryID
+		}
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", target, review.Status, reviewRunLabel(review.LatestRun), verdict, review.Title); err != nil {
 			return err
 		}
 	}

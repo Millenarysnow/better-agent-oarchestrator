@@ -94,7 +94,7 @@ export function toSessionArtifact(artifact: components["schemas"]["SessionArtifa
 
 export function toWorkspaceSession(
 	session: components["schemas"]["ControllersSessionView"],
-	project: Pick<WorkspaceSummary, "id" | "name">,
+	project: Pick<WorkspaceSummary, "id" | "name" | "kind">,
 ): WorkspaceSession {
 	const statusReadiness = session.statusReadiness ?? "ready";
 	const status = statusReadiness === "ready" ? toSessionStatus(session.status, session.isTerminated) : "unknown";
@@ -110,6 +110,7 @@ export function toWorkspaceSession(
 		terminalHandleId: session.terminalHandleId,
 		terminalGeneration: session.terminalGeneration,
 		workspaceId: project.id,
+		projectKind: toProjectKind(project.kind),
 		workspaceName: project.name,
 		title: session.terminalTitle ?? session.displayName ?? session.issueId ?? session.id,
 		issueId: session.issueId,
@@ -124,6 +125,8 @@ export function toWorkspaceSession(
 				}
 			: undefined,
 		autoReviewEnabled: session.autoReviewEnabled ?? false,
+		autoLocalReviewEnabled: session.autoLocalReviewEnabled ?? false,
+		localReview: session.localReview,
 		kind: session.kind === "orchestrator" ? "orchestrator" : session.kind === "worker" ? "worker" : undefined,
 		mode: session.mode === "chat" ? "chat" : "tui",
 		branch: session.branch || undefined,
@@ -233,6 +236,8 @@ function toLocalWorkspaceSession(
 				}
 			: undefined,
 		autoReviewEnabled: session.autoReviewEnabled ?? false,
+		autoLocalReviewEnabled: session.autoLocalReviewEnabled ?? false,
+		localReview: session.localReview,
 		kind: session.kind === "orchestrator" ? "orchestrator" : session.kind === "worker" ? "worker" : undefined,
 		// Carried through verbatim: the session surface must render from
 		// the mode this session was created with, not from the current default.

@@ -67,9 +67,12 @@ type ReviewerSurface struct {
 
 // ReviewRun is one review pass against a worker's PR.
 type ReviewRun struct {
-	ID        string    `json:"id"`
-	ReviewID  string    `json:"reviewId"`
-	SessionID SessionID `json:"sessionId"`
+	TargetKind string    `json:"targetKind,omitempty" enum:"pr,local"`
+	BaseSHA    string    `json:"baseSha,omitempty"`
+	DeliveryID string    `json:"deliveryId,omitempty"`
+	ID         string    `json:"id"`
+	ReviewID   string    `json:"reviewId"`
+	SessionID  SessionID `json:"sessionId"`
 	// BatchID groups review runs created by one trigger so worker feedback can
 	// be delivered once after the whole trigger batch is terminal. Empty marks
 	// legacy/single-run delivery.

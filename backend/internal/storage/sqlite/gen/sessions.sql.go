@@ -221,7 +221,7 @@ SELECT id, project_id, num, issue_id, kind, harness,
     latest_user_prompt, latest_user_prompt_at, latest_interaction_at, latest_assistant_update, latest_assistant_update_at,
     conversation_checkpoint_state, conversation_checkpoint_generation, conversation_checkpoint_native_id,
     conversation_checkpoint_unsettled, conversation_checkpoint_turn_id, native_checkpoint_evidence,
-    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, model, effort, session_permissions,
+    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, auto_local_review_enabled, model, effort, session_permissions,
     requested_output,
     provision_state, provision_error, provision_steps, branch_state, branch_naming, temporary_branch, is_task_preparation, automation_run_id, automation_launch_completed,
     claude_activity_facts, codex_activity_facts,
@@ -287,6 +287,7 @@ type GetSessionRow struct {
 	AutoInjectReview                 bool
 	AutoInjectCI                     bool
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	Model                            string
 	Effort                           string
 	SessionPermissions               string
@@ -373,6 +374,7 @@ func (q *Queries) GetSession(ctx context.Context, id domain.SessionID) (GetSessi
 		&i.AutoInjectReview,
 		&i.AutoInjectCI,
 		&i.AutoReviewEnabled,
+		&i.AutoLocalReviewEnabled,
 		&i.Model,
 		&i.Effort,
 		&i.SessionPermissions,
@@ -415,7 +417,7 @@ SELECT id, project_id, num, issue_id, kind, harness,
     latest_user_prompt, latest_user_prompt_at, latest_interaction_at, latest_assistant_update, latest_assistant_update_at,
     conversation_checkpoint_state, conversation_checkpoint_generation, conversation_checkpoint_native_id,
     conversation_checkpoint_unsettled, conversation_checkpoint_turn_id, native_checkpoint_evidence,
-    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, model, effort, session_permissions,
+    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, auto_local_review_enabled, model, effort, session_permissions,
     requested_output,
     provision_state, provision_error, provision_steps, branch_state, branch_naming, temporary_branch, is_task_preparation, automation_run_id, automation_launch_completed,
     claude_activity_facts, codex_activity_facts,
@@ -481,6 +483,7 @@ type GetSessionByAutomationRunIDRow struct {
 	AutoInjectReview                 bool
 	AutoInjectCI                     bool
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	Model                            string
 	Effort                           string
 	SessionPermissions               string
@@ -567,6 +570,7 @@ func (q *Queries) GetSessionByAutomationRunID(ctx context.Context, automationRun
 		&i.AutoInjectReview,
 		&i.AutoInjectCI,
 		&i.AutoReviewEnabled,
+		&i.AutoLocalReviewEnabled,
 		&i.Model,
 		&i.Effort,
 		&i.SessionPermissions,
@@ -609,7 +613,7 @@ func (q *Queries) GetSessionNumFloor(ctx context.Context, idPrefix string) (int6
 
 const insertSession = `-- name: InsertSession :exec
 INSERT INTO sessions (
-    id, project_id, num, issue_id, kind, harness, reviewer_harness, reviewer_agent_config, auto_review_enabled, display_name,
+    id, project_id, num, issue_id, kind, harness, reviewer_harness, reviewer_agent_config, auto_review_enabled, auto_local_review_enabled, display_name,
     activity_state, activity_last_at, first_signal_at, is_terminated,
     branch, workspace_path, workspace_repo_path, diff_base_sha, diff_base_ref, runtime_handle_id,
     runtime_launch_id, agent_session_id, agent_session_id_launch_id, native_identity_observed_at, prompt,
@@ -625,7 +629,7 @@ INSERT INTO sessions (
     provision_state, provision_error, is_task_preparation, automation_run_id, automation_launch_completed,
     client_request_id, client_request_hash, import_source, display_name_explicit
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
@@ -645,6 +649,7 @@ type InsertSessionParams struct {
 	ReviewerHarness                  domain.ReviewerHarness
 	ReviewerAgentConfig              string
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	DisplayName                      string
 	ActivityState                    domain.ActivityState
 	ActivityLastAt                   time.Time
@@ -714,6 +719,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.ReviewerHarness,
 		arg.ReviewerAgentConfig,
 		arg.AutoReviewEnabled,
+		arg.AutoLocalReviewEnabled,
 		arg.DisplayName,
 		arg.ActivityState,
 		arg.ActivityLastAt,
@@ -787,7 +793,7 @@ SELECT id, project_id, num, issue_id, kind, harness,
     latest_user_prompt, latest_user_prompt_at, latest_interaction_at, latest_assistant_update, latest_assistant_update_at,
     conversation_checkpoint_state, conversation_checkpoint_generation, conversation_checkpoint_native_id,
     conversation_checkpoint_unsettled, conversation_checkpoint_turn_id, native_checkpoint_evidence,
-    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, model, effort, session_permissions,
+    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, auto_local_review_enabled, model, effort, session_permissions,
     requested_output,
     provision_state, provision_error, provision_steps, branch_state, branch_naming, temporary_branch, is_task_preparation, automation_run_id, automation_launch_completed,
     claude_activity_facts, codex_activity_facts,
@@ -853,6 +859,7 @@ type ListAllSessionsRow struct {
 	AutoInjectReview                 bool
 	AutoInjectCI                     bool
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	Model                            string
 	Effort                           string
 	SessionPermissions               string
@@ -945,6 +952,7 @@ func (q *Queries) ListAllSessions(ctx context.Context) ([]ListAllSessionsRow, er
 			&i.AutoInjectReview,
 			&i.AutoInjectCI,
 			&i.AutoReviewEnabled,
+			&i.AutoLocalReviewEnabled,
 			&i.Model,
 			&i.Effort,
 			&i.SessionPermissions,
@@ -1132,7 +1140,7 @@ SELECT id, project_id, num, issue_id, kind, harness,
     latest_user_prompt, latest_user_prompt_at, latest_interaction_at, latest_assistant_update, latest_assistant_update_at,
     conversation_checkpoint_state, conversation_checkpoint_generation, conversation_checkpoint_native_id,
     conversation_checkpoint_unsettled, conversation_checkpoint_turn_id, native_checkpoint_evidence,
-    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, model, effort, session_permissions,
+    native_transcript_path, auto_inject_review, auto_inject_ci, auto_review_enabled, auto_local_review_enabled, model, effort, session_permissions,
     requested_output,
     provision_state, provision_error, provision_steps, branch_state, branch_naming, temporary_branch, is_task_preparation, automation_run_id, automation_launch_completed,
     claude_activity_facts, codex_activity_facts,
@@ -1198,6 +1206,7 @@ type ListSessionsByProjectRow struct {
 	AutoInjectReview                 bool
 	AutoInjectCI                     bool
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	Model                            string
 	Effort                           string
 	SessionPermissions               string
@@ -1290,6 +1299,7 @@ func (q *Queries) ListSessionsByProject(ctx context.Context, projectID *domain.P
 			&i.AutoInjectReview,
 			&i.AutoInjectCI,
 			&i.AutoReviewEnabled,
+			&i.AutoLocalReviewEnabled,
 			&i.Model,
 			&i.Effort,
 			&i.SessionPermissions,
@@ -1513,50 +1523,52 @@ UPDATE sessions SET
     kind = ?2,
     harness = ?3,
     auto_review_enabled = ?4,
-    display_name = ?5,
-    display_name_explicit = ?6,
-    activity_state = ?7,
-    activity_last_at = ?8,
+    auto_local_review_enabled = ?5,
+    display_name = ?6,
+    display_name_explicit = ?7,
+    activity_state = ?8,
+    activity_last_at = ?9,
     is_terminated = 0,
-    session_mode = ?9,
-    model = ?10,
-    effort = ?11,
-    session_permissions = ?12,
-    requested_output = ?13,
-    created_at = ?14,
-    updated_at = ?15,
-    auto_inject_review = ?16,
-    auto_inject_ci = ?17,
-    provision_state = ?18,
+    session_mode = ?10,
+    model = ?11,
+    effort = ?12,
+    session_permissions = ?13,
+    requested_output = ?14,
+    created_at = ?15,
+    updated_at = ?16,
+    auto_inject_review = ?17,
+    auto_inject_ci = ?18,
+    provision_state = ?19,
     provision_error = '',
-    client_request_id = ?19,
-    client_request_hash = ?20,
+    client_request_id = ?20,
+    client_request_hash = ?21,
     is_task_preparation = 0
-WHERE id = ?21 AND is_task_preparation = 1
+WHERE id = ?22 AND is_task_preparation = 1
 `
 
 type PromoteTaskPreparationParams struct {
-	IssueID             domain.IssueID
-	Kind                domain.SessionKind
-	Harness             domain.AgentHarness
-	AutoReviewEnabled   bool
-	DisplayName         string
-	DisplayNameExplicit bool
-	ActivityState       domain.ActivityState
-	ActivityLastAt      time.Time
-	SessionMode         domain.SessionMode
-	Model               string
-	Effort              string
-	SessionPermissions  string
-	RequestedOutput     string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
-	AutoInjectReview    bool
-	AutoInjectCI        bool
-	ProvisionState      domain.SessionProvisionState
-	ClientRequestID     string
-	ClientRequestHash   string
-	ID                  domain.SessionID
+	IssueID                domain.IssueID
+	Kind                   domain.SessionKind
+	Harness                domain.AgentHarness
+	AutoReviewEnabled      bool
+	AutoLocalReviewEnabled bool
+	DisplayName            string
+	DisplayNameExplicit    bool
+	ActivityState          domain.ActivityState
+	ActivityLastAt         time.Time
+	SessionMode            domain.SessionMode
+	Model                  string
+	Effort                 string
+	SessionPermissions     string
+	RequestedOutput        string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	AutoInjectReview       bool
+	AutoInjectCI           bool
+	ProvisionState         domain.SessionProvisionState
+	ClientRequestID        string
+	ClientRequestHash      string
+	ID                     domain.SessionID
 }
 
 // Claim the hidden row without touching branch/workspace facts that may be
@@ -1567,6 +1579,7 @@ func (q *Queries) PromoteTaskPreparation(ctx context.Context, arg PromoteTaskPre
 		arg.Kind,
 		arg.Harness,
 		arg.AutoReviewEnabled,
+		arg.AutoLocalReviewEnabled,
 		arg.DisplayName,
 		arg.DisplayNameExplicit,
 		arg.ActivityState,
@@ -1841,18 +1854,51 @@ func (q *Queries) SetSessionAutoInjectReview(ctx context.Context, arg SetSession
 	return result.RowsAffected()
 }
 
+const setSessionAutoLocalReview = `-- name: SetSessionAutoLocalReview :execrows
+
+UPDATE sessions SET auto_local_review_enabled = ?, updated_at = ? WHERE id =
+`
+
+type SetSessionAutoLocalReviewParams struct {
+	AutoLocalReviewEnabled bool
+	UpdatedAt              time.Time
+	ID                     domain.SessionID
+}
+
+// NOTE: the `DELETE FROM sessions WHERE id = ? AND <seed-state predicates>`
+// statement is intentionally NOT a sqlc query — same sqlc 1.31 SQLite-parser
+// bug as documented in queries/changelog.sql: trailing string literals (and
+// placeholders) on the RHS of `=` in a DELETE get silently stripped, so the
+// generated SQL ends up mid-clause and the row count is meaningless. The
+// store runs that DELETE directly via tx.ExecContext inside
+// Store.DeleteSession, inside the same transaction as the SessionIsSeed
+// probe and the raw change_log cleanup.
+func (q *Queries) SetSessionAutoLocalReview(ctx context.Context, arg SetSessionAutoLocalReviewParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setSessionAutoLocalReview, arg.AutoLocalReviewEnabled, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setSessionAutoReview = `-- name: SetSessionAutoReview :execrows
-UPDATE sessions SET auto_review_enabled = ?, updated_at = ? WHERE id = ?
+UPDATE sessions SET auto_review_enabled = ?, auto_local_review_enabled = ?, updated_at = ? WHERE id = ?
 `
 
 type SetSessionAutoReviewParams struct {
-	AutoReviewEnabled bool
-	UpdatedAt         time.Time
-	ID                domain.SessionID
+	AutoReviewEnabled      bool
+	AutoLocalReviewEnabled bool
+	UpdatedAt              time.Time
+	ID                     domain.SessionID
 }
 
 func (q *Queries) SetSessionAutoReview(ctx context.Context, arg SetSessionAutoReviewParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setSessionAutoReview, arg.AutoReviewEnabled, arg.UpdatedAt, arg.ID)
+	result, err := q.db.ExecContext(ctx, setSessionAutoReview,
+		arg.AutoReviewEnabled,
+		arg.AutoLocalReviewEnabled,
+		arg.UpdatedAt,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -2259,7 +2305,7 @@ func (q *Queries) UpdateBrowserCapabilityVerifier(ctx context.Context, arg Updat
 
 const updateSession = `-- name: UpdateSession :exec
 UPDATE sessions SET
-    issue_id = ?, kind = ?, harness = ?, reviewer_harness = ?, reviewer_agent_config = ?, auto_review_enabled = ?,
+    issue_id = ?, kind = ?, harness = ?, reviewer_harness = ?, reviewer_agent_config = ?, auto_review_enabled = ?, auto_local_review_enabled = ?,
     activity_state = ?, activity_last_at = ?, first_signal_at = ?, is_terminated = ?,
     branch = CASE WHEN temporary_branch <> '' AND temporary_branch = ? THEN branch ELSE ? END, workspace_path = ?, workspace_repo_path = ?, diff_base_sha = ?, diff_base_ref = ?, runtime_handle_id = ?,
     runtime_launch_id = ?, agent_session_id = ?, agent_session_id_launch_id = ?, native_identity_observed_at = ?, prompt = ?,
@@ -2282,6 +2328,7 @@ type UpdateSessionParams struct {
 	ReviewerHarness                  domain.ReviewerHarness
 	ReviewerAgentConfig              string
 	AutoReviewEnabled                bool
+	AutoLocalReviewEnabled           bool
 	ActivityState                    domain.ActivityState
 	ActivityLastAt                   time.Time
 	FirstSignalAt                    sql.NullTime
@@ -2337,6 +2384,7 @@ func (q *Queries) UpdateSession(ctx context.Context, arg UpdateSessionParams) er
 		arg.ReviewerHarness,
 		arg.ReviewerAgentConfig,
 		arg.AutoReviewEnabled,
+		arg.AutoLocalReviewEnabled,
 		arg.ActivityState,
 		arg.ActivityLastAt,
 		arg.FirstSignalAt,

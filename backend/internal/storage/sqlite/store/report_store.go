@@ -14,8 +14,17 @@ import (
 
 // CreateReport atomically persists one validated pending report and all outputs.
 func (s *Store) CreateReport(ctx context.Context, rec domain.ReportRecord) (domain.ReportRecord, error) {
+	return s.CreateReportWithLocalDelivery(ctx, rec, nil)
+}
+
+// CreateReportWithLocalDelivery commits the report, outputs and pinned delivery
+// together. A crash cannot leave an acknowledged done report without its version.
+func (s *Store) CreateReportWithLocalDelivery(ctx context.Context, rec domain.ReportRecord, delivery *domain.LocalDelivery) (domain.ReportRecord, error) {
 	if err := rec.Validate(); err != nil {
 		return domain.ReportRecord{}, err
+	}
+	if delivery != nil && (delivery.ID != rec.ID || delivery.SessionID != rec.SessionID || rec.State != domain.ReportDone) {
+		return domain.ReportRecord{}, errors.New("local delivery does not match its done report")
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -38,6 +47,9 @@ func (s *Store) CreateReport(ctx context.Context, rec domain.ReportRecord) (doma
 			}); err != nil {
 				return err
 			}
+		}
+		if delivery != nil {
+			return q.InsertLocalDelivery(ctx, localDeliveryParams(*delivery))
 		}
 		return nil
 	})

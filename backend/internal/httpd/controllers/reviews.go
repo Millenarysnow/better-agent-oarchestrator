@@ -105,6 +105,9 @@ type ReviewsController struct {
 
 // Register mounts the review routes on the supplied router.
 func (c *ReviewsController) Register(r chi.Router) {
+	r.Get("/sessions/{sessionId}/reviews/local", c.local)
+	r.Post("/sessions/{sessionId}/reviews/local/decision", c.localDecision)
+	r.Put("/sessions/{sessionId}/reviews/local/auto", c.localAuto)
 	r.Post("/reviews/{reviewSessionID}/activity", c.activity)
 	r.Get("/sessions/{sessionId}/reviews", c.list)
 	r.Post("/sessions/{sessionId}/reviews/trigger", c.trigger)
@@ -197,6 +200,7 @@ func (c *ReviewsController) trigger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := c.Svc.TriggerRequested(r.Context(), sessionID(r), reviewsvc.TriggerRequest{
+		Local:              in.Local,
 		Harness:            in.Harness,
 		Config:             in.AgentConfig,
 		RequesterSessionID: in.RequesterSessionID,
@@ -446,6 +450,8 @@ func writeReviewError(w http.ResponseWriter, r *http.Request, err error) {
 		envelope.WriteAPIError(w, r, http.StatusUnprocessableEntity, "unprocessable", "REVIEWER_BINARY_NOT_FOUND", err.Error(), nil)
 	case errors.Is(err, ports.ErrChatAuthRequired):
 		envelope.WriteAPIError(w, r, http.StatusConflict, "conflict", "REVIEWER_AUTH_REQUIRED", "The reviewer agent is installed but not authenticated", nil)
+	case errors.Is(err, reviewsvc.ErrConflict):
+		envelope.WriteAPIError(w, r, http.StatusConflict, "conflict", "REVIEW_CONFLICT", err.Error(), nil)
 	default:
 		envelope.CaptureError(r, err)
 		envelope.WriteAPIError(w, r, http.StatusInternalServerError, "internal", "REVIEW_OPERATION_FAILED", "Review operation failed", nil)

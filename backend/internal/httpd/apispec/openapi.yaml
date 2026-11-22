@@ -13125,6 +13125,105 @@ paths:
       summary: Archive a worker's reviewer and hide its surface while retaining history
       tags:
       - reviews
+  /api/v1/sessions/{sessionId}/reviews/local:
+    get:
+      operationId: getLocalReview
+      parameters:
+      - description: Session identifier, e.g. project-1.
+        in: path
+        name: sessionId
+        required: true
+        schema:
+          description: Session identifier, e.g. project-1.
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalReviewResponse'
+          description: OK
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Unprocessable Entity
+      summary: Read the current local delivery
+      tags:
+      - reviews
+  /api/v1/sessions/{sessionId}/reviews/local/auto:
+    put:
+      operationId: setLocalReviewAuto
+      parameters:
+      - description: Session identifier, e.g. project-1.
+        in: path
+        name: sessionId
+        required: true
+        schema:
+          description: Session identifier, e.g. project-1.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalReviewAutoRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalReviewAutoResponse'
+          description: OK
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Unprocessable Entity
+      summary: Set session local review automation
+      tags:
+      - reviews
+  /api/v1/sessions/{sessionId}/reviews/local/decision:
+    post:
+      operationId: decideLocalReview
+      parameters:
+      - description: Session identifier, e.g. project-1.
+        in: path
+        name: sessionId
+        required: true
+        schema:
+          description: Session identifier, e.g. project-1.
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalReviewDecisionRequest'
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalReviewDecisionResponse'
+          description: OK
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIError'
+          description: Unprocessable Entity
+      summary: Accept or return the current local delivery
+      tags:
+      - reviews
   /api/v1/sessions/{sessionId}/reviews/rerequest:
     post:
       operationId: requestRereview
@@ -19236,6 +19335,8 @@ components:
           type: boolean
         autoInjectReview:
           type: boolean
+        autoLocalReviewEnabled:
+          type: boolean
         autoReviewEnabled:
           type: boolean
         branch:
@@ -19318,6 +19419,8 @@ components:
           type:
           - "null"
           - string
+        localReview:
+          $ref: '#/components/schemas/LocalReviewSummary'
         mode:
           enum:
           - chat
@@ -19461,6 +19564,7 @@ components:
       - id
       - kind
       - autoReviewEnabled
+      - autoLocalReviewEnabled
       - mode
       - activity
       - isTerminated
@@ -22017,6 +22121,131 @@ components:
       required:
       - prUrl
       type: object
+    LocalDelivery:
+      properties:
+        baseSha:
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        decidedAt:
+          format: date-time
+          type:
+          - "null"
+          - string
+        decidedBy:
+          type: string
+        decision:
+          enum:
+          - ""
+          - accepted
+          - changes_requested
+          - needs_input
+          type: string
+        decisionNote:
+          type: string
+        id:
+          type: string
+        inputError:
+          type: string
+        sessionId:
+          type: string
+        targetBranch:
+          type: string
+        targetSha:
+          type: string
+      required:
+      - id
+      - sessionId
+      - baseSha
+      - targetSha
+      - targetBranch
+      - createdAt
+      type: object
+    LocalReviewAutoRequest:
+      properties:
+        enabled:
+          type:
+          - "null"
+          - boolean
+      required:
+      - enabled
+      type: object
+    LocalReviewAutoResponse:
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
+      type: object
+    LocalReviewDecisionRequest:
+      properties:
+        actorSessionId:
+          type: string
+        decision:
+          enum:
+          - accepted
+          - changes_requested
+          - needs_input
+          type: string
+        deliveryId:
+          type: string
+        note:
+          type: string
+      required:
+      - deliveryId
+      - decision
+      type: object
+    LocalReviewDecisionResponse:
+      properties:
+        decision:
+          enum:
+          - accepted
+          - changes_requested
+          - needs_input
+          type: string
+      required:
+      - decision
+      type: object
+    LocalReviewResponse:
+      properties:
+        localReview:
+          anyOf:
+          - type: "null"
+          - $ref: '#/components/schemas/LocalReviewSummary'
+            type: object
+      required:
+      - localReview
+      type: object
+    LocalReviewSummary:
+      properties:
+        delivery:
+          $ref: '#/components/schemas/LocalDelivery'
+        reworkCount:
+          format: int64
+          type: integer
+        runId:
+          type: string
+        stale:
+          type: boolean
+        status:
+          enum:
+          - queued
+          - launching
+          - running
+          - cancelling
+          - completed
+          - failed
+          - cancelled
+          - superseded
+          type: string
+        verdict:
+          type: string
+      required:
+      - delivery
+      - reworkCount
+      - stale
+      type: object
     MarkAllNotificationsReadRequest:
       properties:
         ids:
@@ -22485,6 +22714,10 @@ components:
       type: object
     PRReviewState:
       properties:
+        baseSha:
+          type: string
+        deliveryId:
+          type: string
         latestRun:
           $ref: '#/components/schemas/ReviewRun'
         prNumber:
@@ -22500,6 +22733,11 @@ components:
           - up_to_date
           - changes_requested
           - ineligible
+          type: string
+        targetKind:
+          enum:
+          - pr
+          - local
           type: string
         targetSha:
           type: string
@@ -22757,6 +22995,8 @@ components:
           type: string
         agentRulesFile:
           type: string
+        autoLocalReview:
+          type: boolean
         autoReview:
           type: boolean
         canonicalRepoURL:
@@ -22797,6 +23037,8 @@ components:
           $ref: '#/components/schemas/TrackerIntakeConfig'
         worker:
           $ref: '#/components/schemas/RoleOverride'
+        workersRequestLocalReview:
+          type: boolean
         workersRequestReview:
           type: boolean
       type: object
@@ -23504,6 +23746,8 @@ components:
       properties:
         autoInjectReview:
           type: boolean
+        baseSha:
+          type: string
         batchId:
           type: string
         body:
@@ -23526,6 +23770,8 @@ components:
           type:
           - "null"
           - string
+        deliveryId:
+          type: string
         endedAt:
           format: date-time
           type:
@@ -23580,6 +23826,11 @@ components:
           - failed
           - cancelled
           - superseded
+          type: string
+        targetKind:
+          enum:
+          - pr
+          - local
           type: string
         targetSha:
           type: string
@@ -23936,6 +24187,8 @@ components:
           type: string
         unpushed:
           type: integer
+        worktreeDirty:
+          type: boolean
       required:
       - commits
       - unpushed
@@ -26501,6 +26754,9 @@ components:
           - chat
           - tui
           type: string
+        local:
+          description: Review the current local delivery without a pull request.
+          type: boolean
         prUrl:
           description: Restrict the pass to this pull request, attaching it to the
             session first if AO does not track it yet (never from another active session).

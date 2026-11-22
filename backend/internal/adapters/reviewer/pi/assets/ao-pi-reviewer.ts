@@ -9,7 +9,7 @@ const workerSession = mustValue("AO_PI_REVIEW_SESSION");
 const manifestPointer = mustEnv("AO_PI_REVIEW_MANIFEST_POINTER");
 const maxOutput = 100_000;
 
-type ReviewTask = { runId: string; prUrl: string; targetSha: string };
+type ReviewTask = { runId: string; prUrl: string; targetSha: string; targetKind?: "pr" | "local"; baseSha?: string; deliveryId?: string };
 type ReviewManifest = { version: number; workerSessionId: string; tasks: ReviewTask[] };
 
 function mustEnv(name: string): string {
@@ -71,9 +71,12 @@ async function activeManifest(): Promise<ReviewManifest> {
 		if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.runId) || !/^[0-9a-fA-F]{7,64}$/.test(task.targetSha)) {
 			throw new Error("invalid task in active review manifest");
 		}
-		const url = new URL(task.prUrl);
-		if (url.hostname !== "github.com" || !url.pathname.match(/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+\/?$/)) {
-			throw new Error("invalid pull request in active review manifest");
+		if (task.targetKind === "local") {
+			if (task.prUrl || !/^[0-9a-fA-F]{7,64}$/.test(task.baseSha ?? "") || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.deliveryId ?? "")) throw new Error("invalid local delivery in active review manifest");
+		} else {
+			if (task.targetKind && task.targetKind !== "pr") throw new Error("invalid review target");
+			const url = new URL(task.prUrl);
+			if (url.hostname !== "github.com" || !url.pathname.match(/^\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/\d+\/?$/)) throw new Error("invalid pull request in active review manifest");
 		}
 	}
 	return parsed;
@@ -164,6 +167,7 @@ export default function (pi: ExtensionAPI) {
 			let dir = "";
 			try {
 				const task = await authorizedTask(params.runId, params.prUrl, params.targetSha);
+				if (task.targetKind === "local") throw new Error("local review cannot publish to a provider");
 				const url = new URL(params.prUrl);
 				const match = url.hostname === "github.com" && url.pathname.match(/^\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/pull\/(\d+)\/?$/);
 				if (!match) throw new Error("unsupported GitHub pull request URL");
@@ -189,7 +193,11 @@ export default function (pi: ExtensionAPI) {
 			let dir = "";
 			try {
 				const manifest = await activeManifest();
-				for (const review of params.reviews) if (!manifest.tasks.some((task) => task.runId === review.runId)) throw new Error(`run ${review.runId} is not in the active Orchestrator review manifest`);
+				for (const review of params.reviews) {
+					const task = manifest.tasks.find((task) => task.runId === review.runId);
+					if (!task) throw new Error(`run ${review.runId} is not in the active Orchestrator review manifest`);
+					if (task.targetKind === "local" && review.githubReviewId) throw new Error("local review cannot record a provider review id");
+				}
 				dir = await mkdtemp(join(promptRoot, "ao-submit-"));
 				const input = join(dir, "reviews.json");
 				await writeFile(input, JSON.stringify({ reviews: params.reviews }), { mode: 0o600 });

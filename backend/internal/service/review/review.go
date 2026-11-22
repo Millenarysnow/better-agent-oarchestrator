@@ -86,6 +86,7 @@ type Manager interface {
 
 // Service is the API-facing review service. It delegates to the core engine.
 type Service struct {
+	localWake          func()
 	engine             *reviewcore.Engine
 	store              Store
 	requester          ports.SCMReviewRequester
@@ -484,6 +485,7 @@ func (s *Service) ResolveReviewComment(ctx context.Context, workerID domain.Sess
 // TriggerRequest is a client-requested review pass with its same-commit and
 // feedback policy.
 type TriggerRequest struct {
+	Local   bool
 	Harness domain.ReviewerHarness
 	Config  domain.AgentConfig
 	// Source is manual (a person) or agent (an AO session through the CLI).
@@ -522,6 +524,10 @@ func (s *Service) TriggerRequested(ctx context.Context, workerID domain.SessionI
 	}
 	if req.Rerun && req.RejectReviewedHead {
 		return TriggerOutcome{}, fmt.Errorf("%w: rerun cannot be combined with rejecting an already-reviewed head", ErrInvalid)
+	}
+	if req.Local {
+		req.Source = source
+		return s.triggerLocal(ctx, workerID, req)
 	}
 	branchLookupFoundNone, err := s.refreshPRs(ctx, workerID, strings.TrimSpace(req.PRURL))
 	if err != nil {
@@ -928,6 +934,13 @@ func (s *Service) SubmitMany(ctx context.Context, workerID domain.SessionID, rev
 		}
 		return nil, fmt.Errorf("%w: no submittable review runs in submission", ErrInvalid)
 	}
+	for _, run := range runs {
+		if run.TargetKind == "local" {
+			if err := s.queueLocalResult(ctx, run); err != nil {
+				return nil, err
+			}
+		}
+	}
 	s.notifyReviewDone(ctx, runs)
 	return runs, nil
 }
@@ -957,6 +970,9 @@ func (s *Service) submitOne(ctx context.Context, workerID domain.SessionID, revi
 		return domain.ReviewRun{}, fmt.Errorf("%w: review run %q does not belong to worker %q", ErrInvalid, runID, workerID)
 	}
 
+	if run.TargetKind == "local" && (strings.TrimSpace(body) == "" || githubReviewID != "") {
+		return domain.ReviewRun{}, fmt.Errorf("%w: local reviews require a full report and cannot record a provider review id", ErrInvalid)
+	}
 	switch run.Status {
 	case domain.ReviewRunLaunching, domain.ReviewRunRunning:
 		// A fast reviewer can submit before the trigger records that its prompt
@@ -1044,6 +1060,7 @@ func (s *Service) emitReviewNotification(ctx context.Context, run domain.ReviewR
 	intent := ports.NotificationIntent{
 		SessionID: session.ID, ProjectID: session.ProjectID, PRURL: run.PRURL,
 		SessionDisplayName: session.DisplayName, CreatedAt: s.clock(), SourceKey: "review_run:" + run.ID,
+		ReviewTargetKind: run.TargetKind,
 	}
 	if run.Verdict == domain.VerdictChangesRequested {
 		intent.Type = domain.NotificationReviewChangesRequested

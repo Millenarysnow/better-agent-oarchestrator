@@ -431,10 +431,11 @@ type SessionRecord struct {
 	Harness                AgentHarness `json:"harness,omitempty"`
 	// ReviewerHarness is this session's preferred reviewer. Empty delegates to
 	// the project configuration.
-	ReviewerHarness   ReviewerHarness `json:"reviewerHarness,omitempty" enum:"claude-code,codex,copilot,cursor,kilocode,opencode,opencode-v2,kiro,pi,agy,devin,droid,kimi,kimchi,muse,amp,aider,grok,crush,auggie,cline,autohand"`
-	ReviewerConfig    AgentConfig     `json:"reviewerConfig,omitempty"`
-	AutoReviewEnabled bool            `json:"autoReviewEnabled"`
-	DisplayName       string          `json:"displayName,omitempty"`
+	ReviewerHarness        ReviewerHarness `json:"reviewerHarness,omitempty" enum:"claude-code,codex,copilot,cursor,kilocode,opencode,opencode-v2,kiro,pi,agy,devin,droid,kimi,kimchi,muse,amp,aider,grok,crush,auggie,cline,autohand"`
+	ReviewerConfig         AgentConfig     `json:"reviewerConfig,omitempty"`
+	AutoReviewEnabled      bool            `json:"autoReviewEnabled"`
+	AutoLocalReviewEnabled bool            `json:"autoLocalReviewEnabled"`
+	DisplayName            string          `json:"displayName,omitempty"`
 	// DisplayNameExplicit marks a name a person or caller chose, which outranks
 	// a terminal program's title. Generated and prompt-derived names do not.
 	DisplayNameExplicit bool `json:"-"`
@@ -555,7 +556,8 @@ type SessionWait struct {
 
 // SessionBranchState is the session branch's commit and push facts.
 type SessionBranchState struct {
-	Branch string `json:"branch,omitempty"`
+	Branch        string `json:"branch,omitempty"`
+	WorktreeDirty bool   `json:"worktreeDirty,omitempty"`
 	// Commits is how many commits the branch has on top of its base.
 	Commits int `json:"commits"`
 	// RemoteBranch is the remote-tracking branch, such as "origin/feat/x".
@@ -701,7 +703,8 @@ func (r SessionRecord) ControllerOwner() SessionControllerOwner {
 // plus derived display facts. None of Status, SCMStatus, or KanbanColumn is
 // persisted.
 type Session struct {
-	NeedsResume bool `json:"needsResume"`
+	LocalReview *LocalReviewSummary `json:"localReview,omitempty"`
+	NeedsResume bool                `json:"needsResume"`
 	SessionRecord
 	// WorkspaceCleanup is a durable teardown fact for the current generation.
 	WorkspaceCleanup WorkspaceDisposition `json:"workspaceCleanup,omitempty" enum:"pending,removed,preserved_dirty,failed,not_applicable"`

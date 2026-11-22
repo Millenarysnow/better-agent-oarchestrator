@@ -128,6 +128,7 @@ export type SessionBranchState = {
 	conflicts?: boolean;
 	/** The branch's tip commit. */
 	head?: string;
+	worktreeDirty?: boolean;
 };
 
 /** The session's current launch still runs a harness release an update has replaced. */
@@ -144,6 +145,7 @@ export type WorkspaceSession = {
 	/** Opaque controller generation; changes even when a restarted PTY reuses its handle. */
 	terminalGeneration?: string;
 	workspaceId: string;
+	projectKind?: ProjectKind;
 	workspaceName: string;
 	title: string;
 	/** Raw issue/task identifier from the daemon. Intake ids are provider-prefixed. */
@@ -160,6 +162,8 @@ export type WorkspaceSession = {
 	};
 	/** Whether the daemon may automatically review this session after it becomes idle. */
 	autoReviewEnabled?: boolean;
+	autoLocalReviewEnabled?: boolean;
+	localReview?: import("../../api/schema").components["schemas"]["LocalReviewSummary"];
 	kind?: SessionKind;
 	/**
 	 * Which controller is currently committed for this session. The session

@@ -927,7 +927,10 @@ type LaunchConfig struct {
 
 // WorkspaceHookConfig carries inputs needed to install workspace-local agent hooks.
 type WorkspaceHookConfig struct {
-	Config           AgentConfig
+	Config AgentConfig
+	// SessionMode lets adapters keep terminal-only instructions separate from
+	// a Chat driver's native prompt delivery. Empty retains the TUI default.
+	SessionMode      domain.SessionMode
 	DataDir          string
 	Env              map[string]string
 	SessionID        string

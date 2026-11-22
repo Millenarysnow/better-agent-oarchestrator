@@ -484,6 +484,20 @@ type KeptArtifactSession struct {
 	KeptAt    time.Time
 }
 
+type LocalDelivery struct {
+	ID           string
+	SessionID    string
+	BaseSha      string
+	TargetSha    string
+	TargetBranch string
+	InputError   string
+	Decision     string
+	DecisionNote string
+	DecidedBy    string
+	CreatedAt    time.Time
+	DecidedAt    sql.NullTime
+}
+
 type ManagedHarnessRelease struct {
 	Harness   string
 	Release   string
@@ -748,6 +762,9 @@ type ReviewRun struct {
 	FirstActivityAt         sql.NullTime
 	CancelRequestedAt       sql.NullTime
 	EndedAt                 sql.NullTime
+	TargetKind              string
+	BaseSha                 string
+	DeliveryID              string
 	RequesterSessionID      domain.SessionID
 }
 
@@ -836,6 +853,7 @@ type Session struct {
 	DisplayNameExplicit              bool
 	AcceptedDeliveryID               string
 	AcceptedDeliveryLaunchID         string
+	AutoLocalReviewEnabled           bool
 }
 
 type SessionAgentAccount struct {

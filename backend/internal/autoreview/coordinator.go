@@ -265,11 +265,30 @@ func sessionGate(session domain.SessionRecord, now time.Time, threshold time.Dur
 
 // Sweep evaluates every known session, isolating per-session failures.
 func (c *Coordinator) Sweep(ctx context.Context) error {
+	if repair, ok := c.reviews.(interface {
+		ReconcileLocalFeedback(context.Context) error
+	}); ok {
+		if err := repair.ReconcileLocalFeedback(ctx); err != nil {
+			c.logger.Warn("local review feedback reconciliation failed", "err", err)
+		}
+	}
 	sessions, err := c.store.ListAllSessions(ctx)
 	if err != nil {
 		return err
 	}
 	for _, session := range sessions {
+
+		if local, ok := c.reviews.(interface {
+			TriggerLocalAuto(context.Context, domain.SessionID) (reviewcore.TriggerResult, error)
+		}); ok && session.AutoLocalReviewEnabled {
+			gate := session
+			gate.AutoReviewEnabled = true
+			if sessionGate(gate, c.clock(), c.idleThreshold) == "" {
+				if _, err := local.TriggerLocalAuto(ctx, session.ID); err != nil {
+					c.logger.Warn("local auto-review failed", "session_id", session.ID, "err", err)
+				}
+			}
+		}
 		if reason := sessionGate(session, c.clock(), c.idleThreshold); reason != "" {
 			continue
 		}

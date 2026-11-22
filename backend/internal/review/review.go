@@ -280,6 +280,7 @@ type RestoreReviewerResult struct {
 // TriggerOptions selects the reviewer, its surface, and the same-commit policy
 // for one trigger.
 type TriggerOptions struct {
+	LocalTarget *domain.LocalDelivery
 	// Harness and Config override the resolved reviewer for this pass only.
 	Harness            domain.ReviewerHarness
 	Config             domain.AgentConfig
@@ -373,7 +374,11 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 		}
 	}
 	if source == domain.ReviewTriggerAuto {
-		if reason := autoReviewSessionReason(worker, e.clock()); reason != "" {
+		gateWorker := worker
+		if opts.LocalTarget != nil {
+			gateWorker.AutoReviewEnabled = worker.AutoLocalReviewEnabled
+		}
+		if reason := autoReviewSessionReason(gateWorker, e.clock()); reason != "" {
 			return TriggerResult{SkipReason: reason}, nil
 		}
 	}
@@ -384,37 +389,54 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 		return TriggerResult{}, fmt.Errorf("%w: worker session %q has no workspace to review", ErrInvalid, workerID)
 	}
 
-	prs, err := e.prs.ListPRsBySession(ctx, workerID)
-	if err != nil {
-		return TriggerResult{}, err
-	}
-	if len(prs) == 0 {
-		return TriggerResult{}, fmt.Errorf("%w: %s", ErrInvalid, noTrackedPRMessage(worker, opts.BranchPRLookupFoundNone))
-	}
-	// Only closed or merged PRs are tracked: say so the same way, not just
-	// that no PR head is open, unless the caller named one of them.
+	var prs []domain.PullRequest
 	noOpenPR := ""
-	if strings.TrimSpace(opts.PRURL) == "" && !hasOpenPR(prs) {
-		noOpenPR = noTrackedPRMessage(worker, opts.BranchPRLookupFoundNone)
-	}
-	if want := strings.TrimSpace(opts.PRURL); want != "" {
-		// A targeted pass reviews only the named PR, matched by API or web URL.
-		var only []domain.PullRequest
-		for _, pr := range prs {
-			if pr.URL == want || pr.HTMLURL == want {
-				only = append(only, pr)
+	if opts.LocalTarget == nil {
+		prs, err = e.prs.ListPRsBySession(ctx, workerID)
+		if err != nil {
+			return TriggerResult{}, err
+		}
+		if len(prs) == 0 {
+			return TriggerResult{}, fmt.Errorf("%w: %s", ErrInvalid, noTrackedPRMessage(worker, opts.BranchPRLookupFoundNone))
+		}
+		// Only closed or merged PRs are tracked: say so the same way, not just
+		// that no PR head is open, unless the caller named one of them.
+		noOpenPR = ""
+		if strings.TrimSpace(opts.PRURL) == "" && !hasOpenPR(prs) {
+			noOpenPR = noTrackedPRMessage(worker, opts.BranchPRLookupFoundNone)
+		}
+		if want := strings.TrimSpace(opts.PRURL); want != "" {
+			// A targeted pass reviews only the named PR, matched by API or web URL.
+			var only []domain.PullRequest
+			for _, pr := range prs {
+				if pr.URL == want || pr.HTMLURL == want {
+					only = append(only, pr)
+				}
 			}
+			if len(only) == 0 {
+				return TriggerResult{}, fmt.Errorf("%w: pull request %s is not tracked for worker %q", ErrNotFound, want, workerID)
+			}
+			prs = only
 		}
-		if len(only) == 0 {
-			return TriggerResult{}, fmt.Errorf("%w: pull request %s is not tracked for worker %q", ErrNotFound, want, workerID)
-		}
-		prs = only
+	} else if worker.Kind != domain.KindWorker || opts.LocalTarget.SessionID != workerID || opts.LocalTarget.TargetSHA == "" || opts.LocalTarget.BaseSHA == "" {
+		return TriggerResult{}, fmt.Errorf("%w: invalid local delivery", ErrInvalid)
 	}
 	runs, err := e.store.ListReviewRunsBySession(ctx, workerID)
 	if err != nil {
 		return TriggerResult{}, err
 	}
 
+	for _, run := range runs {
+		if !run.Status.IsActive() {
+			continue
+		}
+		if (opts.LocalTarget != nil && (run.TargetKind != "local" || run.DeliveryID != opts.LocalTarget.ID)) || (opts.LocalTarget == nil && run.TargetKind == "local") {
+			if source == domain.ReviewTriggerAuto {
+				return TriggerResult{SkipReason: "another_review_target_active"}, nil
+			}
+			return TriggerResult{}, fmt.Errorf("%w: a reviewer is still active for another delivery or PR; cancel it before starting a new target", ErrReviewAlreadyRunning)
+		}
+	}
 	if err := overrideConfig.Validate(); err != nil {
 		return TriggerResult{}, fmt.Errorf("%w: reviewer config: %w", ErrInvalid, err)
 	}
@@ -469,6 +491,27 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 	if err := e.destroyIdleOtherReviewerHandles(ctx, workerID, harness, reviewRows, runs); err != nil {
 		return TriggerResult{}, err
 	}
+	previousKind := "pr"
+	var previousTargetRun *domain.ReviewRun
+	for _, run := range runs {
+		if run.Harness != harness && run.Harness != "" {
+			continue
+		}
+		if previousTargetRun == nil || run.CreatedAt.After(previousTargetRun.CreatedAt) || (run.CreatedAt.Equal(previousTargetRun.CreatedAt) && run.ID > previousTargetRun.ID) {
+			snapshot := run
+			previousTargetRun = &snapshot
+		}
+	}
+	if previousTargetRun != nil && previousTargetRun.TargetKind == "local" {
+		previousKind = "local"
+	}
+	targetKind := "pr"
+	if opts.LocalTarget != nil {
+		targetKind = "local"
+	}
+	if hasReview && previousKind != targetKind {
+		hasConfigOverride = true
+	}
 	modeChanging := hasReview && reviewRow.InterfaceMode != "" && reviewRow.InterfaceMode != selectedMode
 	secondOpinionOverride := hasConfigOverride || (modeChanging && mode != "")
 	if modeChanging {
@@ -495,14 +538,18 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 		}
 		return TriggerResult{}, fmt.Errorf("%w: %s is still stopping its previous review; try again in a few seconds", ErrReviewAlreadyRunning, harness)
 	}
+	if opts.LocalTarget != nil {
+		runs = localDeliveryRuns(runs, opts.LocalTarget.ID)
+	}
 	hadRunningReviewer := HasRunningRun(runs, harness)
-	reviews := Plan(prs, runs)
+	reviews := planTargets(prs, opts.LocalTarget, runs)
 	if source == domain.ReviewTriggerAuto || opts.Rerun {
-		planner := Plan
-		if source == domain.ReviewTriggerAuto {
-			planner = PlanAuto
+		harnessRuns := reviewRunsForHarness(runs, harness)
+		if source == domain.ReviewTriggerAuto && opts.LocalTarget == nil {
+			reviews = PlanAuto(prs, harnessRuns)
+		} else {
+			reviews = planTargets(prs, opts.LocalTarget, harnessRuns)
 		}
-		reviews = planner(prs, reviewRunsForHarness(runs, harness))
 		// Automatic sweeps may discover another eligible PR while this harness is
 		// already reviewing one. Reconciliation above has proved the reviewer
 		// terminal is still alive, so do not append work to its active batch. A
@@ -567,13 +614,17 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 			continue
 		}
 		if hasConfigOverride {
-			pendingSupersedes = append(pendingSupersedes, staleSupersede{prURL: reviewState.PRURL, targetSHA: reviewState.TargetSHA})
+			if opts.LocalTarget == nil {
+				pendingSupersedes = append(pendingSupersedes, staleSupersede{prURL: reviewState.PRURL, targetSHA: reviewState.TargetSHA})
+			}
 			if reviewState.LatestRun != nil && reviewRunInFlight(reviewState.LatestRun.Status) && (reviewState.LatestRun.Harness == harness || reviewState.LatestRun.Harness == "") {
 				restarted = append(restarted, *reviewState.LatestRun)
 				continue
 			}
-		} else if err := e.supersedeOlderRuns(ctx, workerID, reviewState.PRURL, reviewState.TargetSHA); err != nil {
-			return TriggerResult{}, err
+		} else if opts.LocalTarget == nil {
+			if err := e.supersedeOlderRuns(ctx, workerID, reviewState.PRURL, reviewState.TargetSHA); err != nil {
+				return TriggerResult{}, err
+			}
 		}
 		if batchID == "" {
 			batchID = e.newID()
@@ -596,8 +647,25 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 			AutoInjectReview: worker.AutoInjectReview,
 			ReviewerModel:    config.Model,
 		}
+		run.TargetKind = "pr"
+		if opts.LocalTarget != nil {
+			run.TargetKind, run.BaseSHA, run.DeliveryID = "local", opts.LocalTarget.BaseSHA, opts.LocalTarget.ID
+		}
 		if err := e.store.InsertReviewRun(ctx, run); err != nil {
-			if errors.Is(err, domain.ErrDuplicateReviewRun) {
+			if errors.Is(err, domain.ErrDuplicateReviewRun) && opts.LocalTarget != nil {
+				// The PR lookup has no delivery ID. Re-read only this delivery
+				// so a new report at the same SHA cannot reuse an old verdict.
+				latest, getErr := e.store.ListReviewRunsBySession(ctx, workerID)
+				if getErr != nil {
+					return TriggerResult{}, getErr
+				}
+				for _, existing := range localDeliveryRuns(latest, opts.LocalTarget.ID) {
+					if existing.Harness == harness && existing.TargetSHA == reviewState.TargetSHA && existing.Status.IsActive() {
+						reviews = replaceReviewLatestRun(reviews, "", reviewState.TargetSHA, existing)
+						return TriggerResult{Run: existing, ReviewerHandleID: legacyReviewerHandle(reviewRow), Reviews: reviews, Runs: localDeliveryRuns(latest, opts.LocalTarget.ID), ReviewerSurface: reviewerSurface(reviewRow)}, nil
+					}
+				}
+			} else if errors.Is(err, domain.ErrDuplicateReviewRun) {
 				if existing, ok, getErr := e.store.GetReviewRunBySessionPRSHAAndHarness(ctx, workerID, reviewState.PRURL, reviewState.TargetSHA, harness); getErr != nil {
 					return TriggerResult{}, getErr
 				} else if ok {
@@ -758,6 +826,9 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 			return TriggerResult{}, rollbackReplacement(err)
 		}
 		launchSpec := reviewLaunchSpec(worker, harness, config, launchRun, queue, 0, launchAgentSessionID, launchID)
+		if opts.LocalTarget != nil {
+			launchSpec.CompletionReport = opts.LocalTarget.CompletionReport
+		}
 		launchSpec.ProjectEnv = projectEnv
 		launchSpec.InterfaceMode = selectedMode
 		launchSpec.DeferInitialMessage = deferInitialMessage
@@ -781,6 +852,9 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 			return TriggerResult{}, failRuns(domain.ReviewFailureLaunchFailed, err)
 		}
 		launchSpec := reviewLaunchSpec(worker, harness, config, launchRun, queue, 0, reviewRow.AgentSessionID, reviewRow.ReviewerLaunchID)
+		if opts.LocalTarget != nil {
+			launchSpec.CompletionReport = opts.LocalTarget.CompletionReport
+		}
 		launchSpec.InterfaceMode = selectedMode
 		if err := e.launcher.Notify(ctx, handleID, launchSpec); err != nil {
 			return TriggerResult{}, failRuns(domain.ReviewFailureLaunchFailed, fmt.Errorf("notify reviewer: %w", err))
@@ -836,6 +910,9 @@ func (e *Engine) TriggerWithOptions(ctx stdctx.Context, workerID domain.SessionI
 		previousStopped = true
 		if deferInitialMessage {
 			launchSpec := reviewLaunchSpec(worker, harness, config, launchRun, queue, 0, persistedAgentSessionID, reviewRow.ReviewerLaunchID)
+			if opts.LocalTarget != nil {
+				launchSpec.CompletionReport = opts.LocalTarget.CompletionReport
+			}
 			launchSpec.InterfaceMode = selectedMode
 			if err := e.launcher.Notify(ctx, handleID, launchSpec); err != nil {
 				return TriggerResult{}, rollbackReplacement(fmt.Errorf("notify replacement reviewer: %w", err))
@@ -1504,6 +1581,7 @@ func reviewLaunchSpec(
 	launchID string,
 ) LaunchSpec {
 	return LaunchSpec{
+		TargetKind: run.TargetKind, BaseSHA: run.BaseSHA, DeliveryID: run.DeliveryID,
 		RunID:           run.ID,
 		BatchID:         run.BatchID,
 		ReviewSessionID: run.ReviewID,
@@ -1526,6 +1604,7 @@ func reviewQueue(runs []domain.ReviewRun) []ports.ReviewTask {
 	queue := make([]ports.ReviewTask, 0, len(runs))
 	for _, run := range runs {
 		queue = append(queue, ports.ReviewTask{
+			TargetKind: run.TargetKind, BaseSHA: run.BaseSHA, DeliveryID: run.DeliveryID,
 			RunID:     run.ID,
 			PRURL:     run.PRURL,
 			TargetSHA: run.TargetSHA,
@@ -1699,7 +1778,7 @@ func (e *Engine) listLocked(ctx stdctx.Context, workerID domain.SessionID, selec
 		ReviewerHarness:       reviewerHarness,
 		ReviewerActivityState: reviewRow.ReviewerActivityState,
 		Runs:                  runs,
-		Reviews:               Plan(prs, runs),
+		Reviews:               e.sessionPlans(ctx, workerID, prs, runs),
 		ReviewerSurface:       reviewerSurface(reviewRow),
 		ActiveReviewers:       active,
 	}, nil
@@ -1793,7 +1872,7 @@ func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelRe
 		if err != nil {
 			return CancelResult{}, err
 		}
-		return CancelResult{ReviewerHandleID: handle, Reviews: Plan(prs, runs)}, nil
+		return CancelResult{ReviewerHandleID: handle, Reviews: e.sessionPlans(ctx, workerID, prs, runs)}, nil
 	}
 	// Several reviewers may be running on this worker at once; cancel stops
 	// all of them. The selected reviewer is cancelled first and its handle is
@@ -1858,7 +1937,7 @@ func (e *Engine) Cancel(ctx stdctx.Context, workerID domain.SessionID) (CancelRe
 	if err != nil {
 		return CancelResult{}, err
 	}
-	return CancelResult{ReviewerHandleID: primaryHandle, Reviews: Plan(prs, runs), CancelledRuns: cancelled}, nil
+	return CancelResult{ReviewerHandleID: primaryHandle, Reviews: e.sessionPlans(ctx, workerID, prs, runs), CancelledRuns: cancelled}, nil
 }
 
 // cancelConfirmed reports whether an interrupted reviewer has already
@@ -2177,4 +2256,14 @@ func (e *Engine) beginHarnessUse(harness domain.ReviewerHarness) (func(), error)
 		return nil, fmt.Errorf("%w: %s", ErrHarnessInstallActive, harness)
 	}
 	return release, nil
+}
+
+func localDeliveryRuns(runs []domain.ReviewRun, deliveryID string) []domain.ReviewRun {
+	out := make([]domain.ReviewRun, 0, len(runs))
+	for _, run := range runs {
+		if run.TargetKind == "local" && run.DeliveryID == deliveryID {
+			out = append(out, run)
+		}
+	}
+	return out
 }

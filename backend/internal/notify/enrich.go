@@ -20,7 +20,9 @@ func enrich(intent Intent) (domain.NotificationRecord, error) {
 	if !intent.Type.Valid() {
 		return domain.NotificationRecord{}, domain.ErrInvalidNotificationType
 	}
-	if intent.Type != domain.NotificationNeedsInput && rec.PRURL == "" {
+	localReview := intent.ReviewTargetKind == "local" &&
+		(intent.Type == domain.NotificationReviewCompleted || intent.Type == domain.NotificationReviewChangesRequested)
+	if intent.Type != domain.NotificationNeedsInput && !localReview && rec.PRURL == "" {
 		return domain.NotificationRecord{}, domain.ErrInvalidNotificationRecord
 	}
 	rec.Title = titleForIntent(intent)
@@ -48,8 +50,14 @@ func titleForIntent(intent Intent) string {
 	case domain.NotificationPRClosedUnmerged:
 		return fmt.Sprintf("%s closed", prLabel(intent))
 	case domain.NotificationReviewCompleted:
+		if intent.ReviewTargetKind == "local" {
+			return fmt.Sprintf("Local review complete for %s", sessionLabel(intent))
+		}
 		return fmt.Sprintf("Review complete for %s", prLabel(intent))
 	case domain.NotificationReviewChangesRequested:
+		if intent.ReviewTargetKind == "local" {
+			return fmt.Sprintf("Local review found changes for %s", sessionLabel(intent))
+		}
 		return fmt.Sprintf("Review found changes for %s", prLabel(intent))
 	default:
 		return "Notification"
@@ -80,8 +88,14 @@ func bodyForIntent(intent Intent) string {
 		}
 		return "Closed without merging. Reopen it if this wasn't intended."
 	case domain.NotificationReviewCompleted:
+		if intent.ReviewTargetKind == "local" {
+			return "The local delivery review passed. Explicit acceptance is still required."
+		}
 		return "Orchestrator finished reviewing this pull request and approved it."
 	case domain.NotificationReviewChangesRequested:
+		if intent.ReviewTargetKind == "local" {
+			return "The local delivery review found changes to address. The coordinator or user decides whether to return it."
+		}
 		return "Orchestrator finished reviewing this pull request and found changes to address."
 	default:
 		return ""

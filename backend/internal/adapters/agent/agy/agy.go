@@ -1,6 +1,6 @@
 // Package agy implements the Agy (Antigravity) agent adapter: launching new sessions,
-// resuming sessions by native ID, installing workspace-local hooks, and reading
-// hook-derived session info.
+// resuming sessions by native ID, installing workspace-local hooks and session
+// instructions, and reading hook-derived session info.
 package agy
 
 import (
@@ -104,7 +104,7 @@ func (p *Plugin) GetConfigSpec(ctx context.Context) (ports.ConfigSpec, error) {
 // GetLaunchCommand builds the argv to start an interactive Agy session.
 // Shape:
 //
-//	agy --add-dir <WorkspacePath> [--mode <mode> | --dangerously-skip-permissions] [--model <Model>] [--prompt-interactive <Prompt>]
+//	agy --add-dir <WorkspacePath> --agent ao-session [--mode <mode> | --dangerously-skip-permissions] [--model <Model>] [--prompt-interactive <Prompt>]
 func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (cmd []string, err error) {
 	binary, err := p.agyBinary(ctx)
 	if err != nil {
@@ -116,6 +116,7 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 	if cfg.WorkspacePath != "" {
 		cmd = append(cmd, "--add-dir", cfg.WorkspacePath)
 	}
+	cmd = append(cmd, "--agent", agySessionAgentName)
 
 	switch ports.NormalizePermissionMode(cfg.Permissions) {
 	case ports.PermissionModeAcceptEdits:
@@ -138,7 +139,7 @@ func (p *Plugin) GetLaunchCommand(ctx context.Context, cfg ports.LaunchConfig) (
 }
 
 // GetRestoreCommand rebuilds the argv that continues an existing Agy session:
-// `agy --add-dir <WorkspacePath> [--mode <mode> | --dangerously-skip-permissions] [--model <Model>] --conversation <agentSessionId>`.
+// `agy --add-dir <WorkspacePath> --agent ao-session [--mode <mode> | --dangerously-skip-permissions] [--model <Model>] --conversation <agentSessionId>`.
 func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig) (cmd []string, ok bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
@@ -159,6 +160,7 @@ func (p *Plugin) GetRestoreCommand(ctx context.Context, cfg ports.RestoreConfig)
 	if cfg.Session.WorkspacePath != "" {
 		cmd = append(cmd, "--add-dir", cfg.Session.WorkspacePath)
 	}
+	cmd = append(cmd, "--agent", agySessionAgentName)
 
 	switch ports.NormalizePermissionMode(cfg.Permissions) {
 	case ports.PermissionModeAcceptEdits:
@@ -237,7 +239,7 @@ func (p *Plugin) NativeConversationExists(
 // the target interface's storage root.
 func (p *Plugin) PrepareInterfaceHandoffStorage(
 	ctx context.Context,
-	_ ports.SessionRef,
+	session ports.SessionRef,
 	from, to domain.SessionMode,
 	nativeConversationID string,
 	env map[string]string,
@@ -253,7 +255,13 @@ func (p *Plugin) PrepareInterfaceHandoffStorage(
 	case from == domain.SessionModeChat && to == domain.SessionModeTUI:
 		return BridgeConversationToCLI(home, nativeConversationID)
 	case from == domain.SessionModeTUI && to == domain.SessionModeChat:
-		return BridgeConversationToACP(home, nativeConversationID)
+		if err := BridgeConversationToACP(home, nativeConversationID); err != nil {
+			return err
+		}
+		if session.WorkspacePath != "" {
+			return errors.Join(removeAgySessionAgent(session.WorkspacePath), uninstallUsingAOSkill(session.WorkspacePath))
+		}
+		return nil
 	default:
 		return nil
 	}

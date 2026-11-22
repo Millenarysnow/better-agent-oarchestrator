@@ -129,10 +129,22 @@ func (m *Manager) SwitchTUIProvider(ctx context.Context, id domain.SessionID, re
 		FastMode: request.FastMode, FastModeOff: !request.FastMode && target == domain.HarnessCodex,
 		Ultracode: request.Ultracode, AutoCompactWindow: request.AutoCompactWindow,
 	}
+	cleanupAgyWorkspace := func(ctx context.Context) error {
+		agyAgent, ok := m.agents.Agent(domain.HarnessAgy)
+		if !ok || agyAgent == nil {
+			return errors.New("AGY adapter is unavailable for workspace cleanup")
+		}
+		env := m.runtimeEnv(id, rec.ProjectID, rec.IssueID, project.Config.Env)
+		return m.cleanupPreparedAgentWorkspaceStrict(ctx, agyAgent, id, ws.Path, env)
+	}
 	restoreSource := func(cause error, what string) error {
 		// A target that used up the switch's time still leaves the restore its own.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*interfaceTransitionStepLimit)
 		defer cancel()
+		var targetCleanupErr error
+		if target == domain.HarnessAgy && source.Harness != domain.HarnessAgy {
+			targetCleanupErr = cleanupAgyWorkspace(ctx)
+		}
 		// So does one made while the target was starting.
 		source := source
 		keepUserEdits(ctx, &source)
@@ -144,6 +156,9 @@ func (m *Manager) SwitchTUIProvider(ctx context.Context, id domain.SessionID, re
 			restoreErr = launchStore.UpdateSessionWithLaunchOptions(ctx, source, sourceLaunch)
 		} else {
 			restoreErr = m.store.UpdateSession(ctx, source)
+		}
+		if restoreErr == nil && targetCleanupErr != nil {
+			restoreErr = fmt.Errorf("clean failed AGY target workspace: %w", targetCleanupErr)
 		}
 		if restoreErr == nil {
 			_, restoreErr = m.relaunchSessionWithPolicy(ctx, "restore source provider", source, project, ws, nil, false, false, domain.SessionInterfaceTransitionHistoryStrict)
@@ -159,6 +174,11 @@ func (m *Manager) SwitchTUIProvider(ctx context.Context, id domain.SessionID, re
 			}
 		}
 		return &domain.ProviderSwitchError{Kind: domain.ProviderSwitchRefusalUnavailable, Detail: what + ": " + cause.Error(), Cause: cause}
+	}
+	if source.Harness == domain.HarnessAgy && target != domain.HarnessAgy {
+		if err := cleanupAgyWorkspace(ctx); err != nil {
+			return restoreSource(err, "could not clean the source AGY workspace")
+		}
 	}
 
 	targetRecord := source

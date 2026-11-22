@@ -66,17 +66,21 @@ type Launcher interface {
 
 // LaunchSpec is the engine's request to (re)launch a reviewer for one pass.
 type LaunchSpec struct {
-	RunID           string
-	BatchID         string
-	ReviewSessionID string
-	LaunchID        string
-	WorkerID        domain.SessionID
-	ProjectID       domain.ProjectID
-	ProjectEnv      map[string]string
-	Harness         domain.ReviewerHarness
-	AgentConfig     domain.AgentConfig
-	WorkspacePath   string
-	AgentSessionID  string
+	CompletionReport string
+	TargetKind       string
+	BaseSHA          string
+	DeliveryID       string
+	RunID            string
+	BatchID          string
+	ReviewSessionID  string
+	LaunchID         string
+	WorkerID         domain.SessionID
+	ProjectID        domain.ProjectID
+	ProjectEnv       map[string]string
+	Harness          domain.ReviewerHarness
+	AgentConfig      domain.AgentConfig
+	WorkspacePath    string
+	AgentSessionID   string
 	// ProviderConversationID is the typed Chat driver's stable conversation id.
 	// Terminal reviewers continue to use AgentSessionID.
 	ProviderConversationID string
@@ -326,16 +330,17 @@ func (l *agentLauncher) invocation(spec LaunchSpec) ports.ReviewInvocation {
 		RunID:           spec.RunID,
 		WorkerSessionID: spec.WorkerID,
 		AgentSessionID:  spec.AgentSessionID,
-		PRURL:           spec.PRURL,
-		TargetSHA:       spec.TargetSHA,
-		ReviewQueue:     spec.ReviewQueue,
-		ReviewIndex:     spec.ReviewIndex,
-		Config:          spec.AgentConfig,
-		WorkspacePath:   spec.WorkspacePath,
-		DataDir:         l.dataDir,
-		RunFilePath:     l.runFile,
-		Prompt:          prompt,
-		SystemPrompt:    systemPrompt,
+		TargetKind:      spec.TargetKind, BaseSHA: spec.BaseSHA, DeliveryID: spec.DeliveryID,
+		PRURL:         spec.PRURL,
+		TargetSHA:     spec.TargetSHA,
+		ReviewQueue:   spec.ReviewQueue,
+		ReviewIndex:   spec.ReviewIndex,
+		Config:        spec.AgentConfig,
+		WorkspacePath: spec.WorkspacePath,
+		DataDir:       l.dataDir,
+		RunFilePath:   l.runFile,
+		Prompt:        prompt,
+		SystemPrompt:  systemPrompt,
 	}
 }
 
@@ -392,7 +397,11 @@ func (l *agentLauncher) prepareInvocation(ctx context.Context, spec LaunchSpec) 
 func (l *agentLauncher) prepareIdleInvocation(spec LaunchSpec) (ports.ReviewInvocation, error) {
 	promptRoot := filepath.Join(l.dataDir, "prompts", string(spec.WorkerID), "reviewer")
 	systemPath := filepath.Join(promptRoot, "system.md")
-	systemPrompt := reviewSystemPrompt() + "\n\n" +
+	system := reviewSystemPrompt()
+	if len(spec.PreviousRuns) > 0 && spec.PreviousRuns[0].TargetKind == "local" {
+		_, system = localReviewTexts(LaunchSpec{})
+	}
+	systemPrompt := system + "\n\n" +
 		"Orchestrator may restore your terminal before a new review task exists. In that state, wait for Orchestrator to send a review task file path before reviewing or submitting results.\n"
 	if err := os.MkdirAll(promptRoot, 0o700); err != nil {
 		return ports.ReviewInvocation{}, fmt.Errorf("create reviewer prompt directory: %w", err)
@@ -428,7 +437,11 @@ func previousReviewHistoryText(runs []domain.ReviewRun) string {
 			fmt.Fprintf(&b, "\n* ... %d older review run(s) omitted.", len(runs)-maxRuns)
 			break
 		}
-		fmt.Fprintf(&b, "\n* %s", run.PRURL)
+		if run.TargetKind == "local" {
+			fmt.Fprintf(&b, "\n* Local delivery %s (%s..%s)", run.DeliveryID, run.BaseSHA, run.TargetSHA)
+		} else {
+			fmt.Fprintf(&b, "\n* %s", run.PRURL)
+		}
 		if run.TargetSHA != "" {
 			fmt.Fprintf(&b, " at %s", run.TargetSHA)
 		}

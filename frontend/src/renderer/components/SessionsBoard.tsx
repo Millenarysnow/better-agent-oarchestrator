@@ -189,7 +189,7 @@ export function SessionsBoard({ projectId, hostId }: SessionsBoardProps) {
 	const [shareOpen, setShareOpen] = useState(false);
 	const shareTargetWorkspace = shareTarget ? workspaces.find((candidate) => candidate.id === shareTarget.workspaceId) : undefined;
 	const boardSessions = activeSessions.map((session) =>
-		session.status === "no_signal" || session.displayStatus === "No signal"
+		!session.localReview && (session.status === "no_signal" || session.displayStatus === "No signal")
 			? { ...session, kanbanColumn: "building" as const }
 			: session,
 	);

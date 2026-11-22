@@ -1,3 +1,4 @@
+import { LocalDeliveryReviewPanel } from "./LocalDeliveryReviewPanel";
 import { apiErrorException } from "../lib/api-error-exception";
 import { BrowserIcon, SubagentIcon } from "./icons";
 import { GitHubIcon } from "./GitHubIcon";
@@ -394,6 +395,8 @@ function reviewsTabVisible(session: WorkspaceSession | undefined): boolean {
 	// Cloud PR facts are queried directly by CloudReviewsSection instead of
 	// piggybacking on the local daemon workspace projection.
 	if (session.cloud) return true;
+	if (session.kind !== "orchestrator" && sortedPRs(session).length === 0 &&
+		(session.projectKind === "single_repo" || session.localReview !== undefined || session.autoLocalReviewEnabled === true)) return true;
 	return sortedPRs(session).some((pr) => pr.state === "open" || pr.state === "draft");
 }
 
@@ -2089,6 +2092,7 @@ function LocalReviewsSection({
 	);
 	return (
 		<>
+            {!hasPr && session.kind !== "orchestrator" && !session.cloud && <LocalDeliveryReviewPanel session={session} hostId={hostId} onOpenReviewer={(surface)=>{if(surface.mode==="chat")onOpenReviewerChat?.(surface.reviewId);else if(surface.handleId)onOpenReviewerTerminal?.({handleId:surface.handleId,harness:surface.harness});}} />}
 			{/* Running a review is an action; reading them is a list. The action stays
 			    on top, then one list carrying both sources keyed by PR. */}
 			<ReviewPanel
