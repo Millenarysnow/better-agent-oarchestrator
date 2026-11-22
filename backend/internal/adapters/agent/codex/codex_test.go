@@ -612,6 +612,60 @@ func TestResolveCodexBinaryPrefersNPMOverWindowsAppsExecutable(t *testing.T) {
 	}
 }
 
+func TestResolveCodexBinaryPrefersNativePathOverFallbackWindowsShim(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows resolver only")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	shim := filepath.Join(home, ".local", "bin", "codex.cmd")
+	want := filepath.Join(root, "desktop", "codex.exe")
+	writeFile(t, shim, "@echo off\r\n\"%LOCALAPPDATA%\\OpenAI\\Codex\\bin\\codex.exe\" %*\r\n")
+	writeFile(t, want, "native codex")
+	setCodexResolverWindowsEnvironment(t, root, home, filepath.Dir(want))
+
+	got, err := ResolveCodexBinary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("ResolveCodexBinary() = %q, want native executable %q", got, want)
+	}
+}
+
+func TestResolveCodexBinaryFallsBackToWindowsShimWithoutNativeExecutable(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows resolver only")
+	}
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	want := filepath.Join(home, ".local", "bin", "codex.cmd")
+	writeFile(t, want, "@echo off\r\n")
+	setCodexResolverWindowsEnvironment(t, root, home, "")
+
+	got, err := ResolveCodexBinary(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("ResolveCodexBinary() = %q, want shim fallback %q", got, want)
+	}
+}
+
+func setCodexResolverWindowsEnvironment(t *testing.T, root, home, path string) {
+	t.Helper()
+	t.Setenv("APPDATA", filepath.Join(root, "roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(root, "local-app-data"))
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", path)
+	t.Setenv("ProgramFiles", "")
+	t.Setenv("ProgramFiles(x86)", "")
+	t.Setenv("ProgramData", "")
+	t.Setenv("VOLTA_HOME", "")
+	t.Setenv("NVM_SYMLINK", "")
+}
+
 func TestGetLaunchCommandMapsApprovalModes(t *testing.T) {
 	tests := []struct {
 		name        string

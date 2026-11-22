@@ -480,8 +480,35 @@ func ResolveCodexBinary(ctx context.Context) (string, error) {
 		if home, err := os.UserHomeDir(); err == nil {
 			candidates = append(candidates, filepath.Join(home, ".cargo", "bin", "codex.exe"))
 		}
-		candidates = append(candidates, binaryutil.WindowsPackageManagerBinCandidates("codex")...)
 		for _, candidate := range candidates {
+			if fileExists(candidate) {
+				return resolveNativeWindowsCodex(candidate, runtime.GOOS), nil
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+		}
+		packageManagerCandidates := binaryutil.WindowsPackageManagerBinCandidates("codex")
+		for _, candidate := range packageManagerCandidates {
+			if isWindowsBatchShim(candidate) {
+				continue
+			}
+			if fileExists(candidate) {
+				return candidate, nil
+			}
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+		}
+
+		if path, err := exec.LookPath("codex.exe"); err == nil && path != "" && !isWindowsAppsCodexExecutable(path) {
+			return path, nil
+		}
+
+		for _, candidate := range packageManagerCandidates {
+			if !isWindowsBatchShim(candidate) {
+				continue
+			}
 			if fileExists(candidate) {
 				return resolveNativeWindowsCodex(candidate, runtime.GOOS), nil
 			}
@@ -539,6 +566,15 @@ func ResolveCodexBinary(ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("codex: %w", ports.ErrAgentBinaryNotFound)
+}
+
+func isWindowsBatchShim(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".cmd", ".bat":
+		return true
+	default:
+		return false
+	}
 }
 
 // resolveNativeWindowsCodex unwraps an npm command shim, including AO's managed
